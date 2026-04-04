@@ -31,16 +31,16 @@ interface ElectronApi {
 interface Window {
   electronAPI?: ElectronApi
   hybridChatTimers?: Array<number | ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>>
-  localMessageService?: unknown
-  initLocalMessageService?: () => unknown
-  getLocalStorageStatus?: () => unknown
-  clearLocalMessages?: () => unknown
-  checkChat8LocalStorage?: () => unknown
-  clearChat8Messages?: () => unknown
-  getChat8UserKeys?: (userId?: number | string | null) => unknown
-  clearChat8UserKeys?: (userId?: number | string | null) => unknown
-  validateChat8UserKeys?: () => unknown
-  getChat8Contacts?: () => unknown
+  whisperMessageService?: unknown
+  initWhisperMessageService?: () => unknown
+  getWhisperMessageServiceStatus?: () => unknown
+  clearWhisperMessages?: () => unknown
+  checkWhisperDatabaseStatus?: () => unknown
+  clearWhisperDatabaseMessages?: () => unknown
+  getWhisperUserKeys?: (userId?: number | string | null) => unknown
+  clearWhisperUserKeys?: (userId?: number | string | null) => unknown
+  validateWhisperUserKeys?: () => unknown
+  getWhisperContacts?: () => unknown
   enableFileDebugMode?: () => void
   disableFileDebugMode?: () => void
   webkitAudioContext?: typeof AudioContext

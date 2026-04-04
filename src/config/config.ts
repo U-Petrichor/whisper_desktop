@@ -1,4 +1,4 @@
-// Chat8 客户端配置文件
+// Whisper 客户端配置文件
 
 // 开发环境配置
 const development = {

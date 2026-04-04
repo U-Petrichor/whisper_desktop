@@ -407,16 +407,16 @@ const localMessageService = new LocalMessageService();
 
 // 在浏览器控制台中暴露调试函数
 if (typeof window !== 'undefined') {
-  window.localMessageService = localMessageService;
-  window.initLocalMessageService = () => localMessageService.initialize();
-  window.getLocalStorageStatus = () => localMessageService.getStorageStatus();
-  window.clearLocalMessages = () => localMessageService.clearAllMessages();
+  window.whisperMessageService = localMessageService;
+  window.initWhisperMessageService = () => localMessageService.initialize();
+  window.getWhisperMessageServiceStatus = () => localMessageService.getStorageStatus();
+  window.clearWhisperMessages = () => localMessageService.clearAllMessages();
   
-  console.log('💡 本地消息服务调试命令:');
-  console.log('  - localMessageService 访问服务实例');
-  console.log('  - initLocalMessageService() 初始化服务');
-  console.log('  - getLocalStorageStatus() 查看存储状态');
-  console.log('  - clearLocalMessages() 清空所有消息');
+  console.log('💡 Whisper 消息服务调试命令:');
+  console.log('  - whisperMessageService 访问服务实例');
+  console.log('  - initWhisperMessageService() 初始化服务');
+  console.log('  - getWhisperMessageServiceStatus() 查看存储状态');
+  console.log('  - clearWhisperMessages() 清空所有消息');
 }
 
 export default localMessageService;

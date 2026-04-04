@@ -14,7 +14,7 @@ export function initSingleLogin() {
   // 检查浏览器是否支持 BroadcastChannel
   if (typeof BroadcastChannel !== 'undefined') {
     // 创建广播频道
-    loginChannel = new BroadcastChannel('chat8_login_channel');
+    loginChannel = new BroadcastChannel('whisper_login_channel');
     
     // 监听其他页面的登录消息
     loginChannel.onmessage = (event) => {

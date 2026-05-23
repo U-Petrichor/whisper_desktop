@@ -47,10 +47,10 @@
                 v-if="!isAlreadyFriend(user.id) && !isRequestSent(user.id)"
                 @click="sendFriendRequest(user)"
                 class="add-btn"
-                :class="{ 'adding': addingUsers.includes(user.id) }"
-                :disabled="addingUsers.includes(user.id)"
+                :class="{ 'adding': isAddingUser(user.id) }"
+                :disabled="isAddingUser(user.id)"
               >
-                <span v-if="!addingUsers.includes(user.id)" class="add-btn-content">
+                <span v-if="!isAddingUser(user.id)" class="add-btn-content">
                   <svg class="add-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <path d="M12 5v14M5 12h14"/>
                   </svg>
@@ -91,6 +91,7 @@
 import { ref, computed, watch } from 'vue'
 import { hybridStore } from '../store/hybrid-store.ts'
 import { hybridApi } from '../api/hybrid-api.ts'
+import { extractPendingSentRequestUserIds } from '../utils/api-contract.ts'
 
 export default {
   name: 'AddContactModal',
@@ -108,6 +109,11 @@ export default {
     const addingUsers = ref([])
     const hasSearched = ref(false)
     const sentRequests = ref(new Set()) // 记录已发送申请的用户ID
+
+    const normalizeUserId = (userId) => {
+      const numericId = Number(userId)
+      return Number.isFinite(numericId) ? numericId : null
+    }
     
     // 从本地存储加载已发送的好友申请状态
     const loadSentRequestsFromStorage = () => {
@@ -118,6 +124,8 @@ export default {
           const stored = localStorage.getItem(storageKey)
           if (stored) {
             const requestIds = JSON.parse(stored)
+              .map(normalizeUserId)
+              .filter((id) => id !== null)
             sentRequests.value = new Set(requestIds)
           }
         }
@@ -139,6 +147,39 @@ export default {
         console.error('保存已发送好友申请状态失败:', error)
       }
     }
+
+    const pruneSentRequestsForContacts = () => {
+      const friendIds = new Set(
+        contacts.value
+          .map((contact) => normalizeUserId(contact.id))
+          .filter((id) => id !== null)
+      )
+      if (friendIds.size === 0) return
+
+      let changed = false
+      const nextSentRequests = new Set(sentRequests.value)
+      for (const friendId of friendIds) {
+        if (nextSentRequests.delete(friendId)) changed = true
+      }
+
+      if (changed) {
+        sentRequests.value = nextSentRequests
+        saveSentRequestsToStorage()
+      }
+    }
+
+    const syncSentRequestsFromServer = async () => {
+      try {
+        const response = await hybridApi.getFriendRequests('sent')
+        sentRequests.value = extractPendingSentRequestUserIds(response)
+        pruneSentRequestsForContacts()
+        saveSentRequestsToStorage()
+      } catch (error) {
+        console.warn('同步已发送好友申请失败，使用本地缓存:', error)
+        loadSentRequestsFromStorage()
+        pruneSentRequestsForContacts()
+      }
+    }
     
     // 初始化时加载状态
     loadSentRequestsFromStorage()
@@ -146,11 +187,18 @@ export default {
     const contacts = computed(() => hybridStore.contacts)
     
     const isAlreadyFriend = (userId) => {
-      return contacts.value.some(contact => contact.id === userId)
+      const normalizedUserId = normalizeUserId(userId)
+      return normalizedUserId !== null && contacts.value.some(contact => normalizeUserId(contact.id) === normalizedUserId)
     }
     
     const isRequestSent = (userId) => {
-      return sentRequests.value.has(userId)
+      const normalizedUserId = normalizeUserId(userId)
+      return normalizedUserId !== null && sentRequests.value.has(normalizedUserId)
+    }
+
+    const isAddingUser = (userId) => {
+      const normalizedUserId = normalizeUserId(userId)
+      return normalizedUserId !== null && addingUsers.value.includes(normalizedUserId)
     }
     
     const searchUsers = async () => {
@@ -204,14 +252,15 @@ export default {
     }
     
     const sendFriendRequest = async (user) => {
-      if (addingUsers.value.includes(user.id)) return
+      const userId = normalizeUserId(user.id)
+      if (userId === null || addingUsers.value.includes(userId)) return
       
-      addingUsers.value.push(user.id)
+      addingUsers.value.push(userId)
       try {
-        await hybridApi.sendFriendRequest(parseInt(user.id))
+        await hybridApi.sendFriendRequest(userId)
         
         // 标记为已发送申请
-        sentRequests.value.add(user.id)
+        sentRequests.value.add(userId)
         
         // 保存到本地存储
         saveSentRequestsToStorage()
@@ -238,7 +287,7 @@ export default {
         
         alert(errorMessage)
       } finally {
-        addingUsers.value = addingUsers.value.filter(id => id !== user.id)
+        addingUsers.value = addingUsers.value.filter(id => id !== userId)
       }
     }
     
@@ -257,8 +306,13 @@ export default {
     watch(() => props.isVisible, (newValue) => {
       if (newValue) {
         loadSentRequestsFromStorage()
+        syncSentRequestsFromServer()
       }
     })
+
+    watch(contacts, () => {
+      pruneSentRequestsForContacts()
+    }, { deep: true })
     
     return {
       searchQuery,
@@ -268,6 +322,7 @@ export default {
       hasSearched,
       isAlreadyFriend,
       isRequestSent,
+      isAddingUser,
       searchUsers,
       sendFriendRequest,
       closeModal

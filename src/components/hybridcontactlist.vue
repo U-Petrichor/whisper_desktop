@@ -155,6 +155,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { hybridStore } from '../store/hybrid-store.ts'
 import { hybridApi } from '../api/hybrid-api.ts'
+import { extractPaginatedItems } from '../utils/api-contract.ts'
 import AddContactModal from './addcontactmodal.vue'
 
 const emit = defineEmits(['contact-selected', 'show-friend-profile']);
@@ -206,8 +207,7 @@ watch(() => hybridStore.contacts, (newContacts, oldContacts) => {
 async function loadContacts() {
   try {
     const response = await hybridApi.getContacts();
-    // 后端返回格式: {success: true, data: {items: [...], ...}}
-    const contactsData = response.data.data.items || [];
+    const contactsData = extractPaginatedItems(response);
     hybridStore.setContacts(contactsData);
     
     // 为在线且支持P2P的联系人自动建立P2P连接
@@ -253,8 +253,8 @@ async function selectContact(contact) {
   // 加载该联系人的消息历史
   try {
     const response = await hybridApi.getMessageHistory(contact.id);
-    if (response.data && response.data.success) {
-      const messages = response.data.data.items || [];
+    if (response.data) {
+      const messages = extractPaginatedItems(response);
       // 将消息添加到store中
       hybridStore.setMessages(contact.id, messages);
     }

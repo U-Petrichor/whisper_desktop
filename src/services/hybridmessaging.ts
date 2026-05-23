@@ -1,6 +1,13 @@
 import { getLocalKey, saveLocalKey, deleteLocalKey } from '@/utils/key-storage';
 import localMessageService from './localMessageService.ts';
 import { getChinaTimeISO, generateTempMessageId } from '../utils/timeUtils.ts';
+import { extractPayload, extractWsPayload } from '../utils/api-contract.ts';
+import {
+  parseSignalEnvelope,
+  serializeSignalEnvelope,
+  SignalHttpRuntime,
+  type SignalEnvelope,
+} from './signal-runtime.ts';
 
 // 混合消息传递服务
 class HybridMessaging {
@@ -30,6 +37,8 @@ class HybridMessaging {
   pendingIceCandidates: Map<any, any[]> | null;
   lastHeartbeatTime: number;
   connectionHealthy: boolean;
+  signalRuntime: SignalHttpRuntime | null;
+  signalReady: boolean;
 
   // 语音通话相关状态
   voiceCallState: any;
@@ -66,6 +75,8 @@ class HybridMessaging {
     this.pendingIceCandidates = null;
     this.lastHeartbeatTime = 0;
     this.connectionHealthy = false;
+    this.signalRuntime = null;
+    this.signalReady = false;
     
     // 初始化语音通话状态
     this.voiceConnections = new Map();
@@ -92,6 +103,7 @@ class HybridMessaging {
     
     // 初始化消息处理器映射
     this.initializeMessageHandlers();
+    await this.initializeSignalRuntime();
     
     // 建立WebSocket连接用于信令
     await this.connectSignalingServer();
@@ -107,6 +119,23 @@ class HybridMessaging {
   }
 
   // 初始化消息处理器映射
+  async initializeSignalRuntime() {
+    if (!this.currentUserId) return;
+
+    try {
+      const { hybridApi } = await import('../api/hybrid-api.ts');
+      this.signalRuntime = new SignalHttpRuntime({ userId: this.currentUserId });
+      const account = await this.signalRuntime.createAccount({ opkCount: 20 });
+      await hybridApi.uploadKeyBundle(account.keyBundle);
+      this.signalReady = true;
+      console.log('[Signal] Signal runtime ready and key bundle uploaded');
+    } catch (error) {
+      this.signalRuntime = null;
+      this.signalReady = false;
+      console.warn('[Signal] Signal runtime unavailable, falling back to legacy plaintext transport:', error);
+    }
+  }
+
   initializeMessageHandlers() {
     this.messageHandlers = {
       'p2p_offer': this.handleP2POffer.bind(this),
@@ -254,13 +283,15 @@ class HybridMessaging {
         
         case 'friends_status':
           if (this.onFriendsStatusReceived) {
-            this.onFriendsStatusReceived(data.payload.onlineFriends);
+            const payload = extractWsPayload(data);
+            this.onFriendsStatusReceived(payload.onlineFriends || payload.online_friends || []);
           }
           break;
 
+        case 'user_status':
         case 'user_status_change':
           if (this.onUserStatusChanged) {
-            this.onUserStatusChanged(data.payload);
+            this.onUserStatusChanged(extractWsPayload(data));
           }
           break;
 
@@ -882,14 +913,66 @@ class HybridMessaging {
   }
 
   // 服务器转发消息（C/S模式）
+  async encryptForServerTransport(toUserId: any, content: any, messageType = 'text') {
+    if (!this.signalReady || !this.signalRuntime || messageType !== 'text' || typeof content !== 'string') {
+      return { content, encrypted: false };
+    }
+
+    try {
+      const { hybridApi } = await import('../api/hybrid-api.ts');
+      const bundleResponse = await hybridApi.getPreKeyBundle(toUserId, true);
+      const recipientBundle = extractPayload(bundleResponse);
+      const envelope: SignalEnvelope = await this.signalRuntime.encryptMessage({
+        toUserId,
+        plaintext: content,
+        recipientBundle,
+      });
+
+      return {
+        content: serializeSignalEnvelope(envelope),
+        encrypted: true,
+        envelope,
+      };
+    } catch (error) {
+      console.warn('[Signal] Failed to encrypt server message, falling back to plaintext transport:', error);
+      return { content, encrypted: false };
+    }
+  }
+
+  async decryptFromServerTransport(fromUserId: any, content: any) {
+    const envelope = parseSignalEnvelope(String(content ?? ''));
+    if (!envelope) {
+      return { content, encrypted: false };
+    }
+
+    if (!this.signalRuntime) {
+      this.signalRuntime = new SignalHttpRuntime({ userId: this.currentUserId as any });
+    }
+
+    try {
+      const plaintext = await this.signalRuntime.decryptMessage({
+        fromUserId,
+        envelope,
+      });
+      this.signalReady = true;
+      return { content: plaintext, encrypted: true, envelope };
+    } catch (error) {
+      console.error('[Signal] Failed to decrypt server message:', error);
+      return { content: '[Signal message could not be decrypted]', encrypted: true, envelope, error };
+    }
+  }
+
   async sendServerMessage(toUserId: any, content: any, options: any = {}) {
     try {
       console.log('发送服务器消息:', { toUserId, content, options });
       
+      const messageType = options.messageType || 'text';
+      const transportMessage = await this.encryptForServerTransport(toUserId, content, messageType);
+
       const messageData: any = {
         to: toUserId,
-        encryptedContent: content,
-        messageType: options.messageType || 'text'
+        encryptedContent: transportMessage.content,
+        messageType
       };
       
       if (options.burnAfter && options.burnAfter > 0) {
@@ -909,8 +992,9 @@ class HybridMessaging {
           content: content,
           timestamp: result.timestamp || getChinaTimeISO(),
           method: 'Server',
-          messageType: 'text',
-          encrypted: false
+          messageType,
+          encrypted: false,
+          signalEncrypted: transportMessage.encrypted
         };
         
         if (options.burnAfter && options.burnAfter > 0) {
@@ -954,21 +1038,28 @@ class HybridMessaging {
       return;
     }
     
+    const payload = extractWsPayload(data);
+    const fromUserId = payload.fromId || payload.from_id || payload.from;
+    const encryptedContent = payload.encryptedContent || payload.encrypted_content || payload.content || '';
+    const transportMessage = await this.decryptFromServerTransport(fromUserId, encryptedContent);
+
     const msgData: any = {
-      id: data.id || generateTempMessageId(),
-      from: data.from,
+      id: payload.id || generateTempMessageId(),
+      from: fromUserId,
       to: this.currentUserId,
-      content: data.content,
-      timestamp: data.timestamp,
+      content: transportMessage.content,
+      timestamp: payload.timestamp,
       method: 'Server',
-      messageType: data.messageType || data.message_type || 'text',
-      filePath: data.filePath || data.file_path || null,
-      fileName: data.fileName || data.file_name || null,
-      hiddenMessage: data.hiddenMessage || data.hidden_message || null
+      messageType: payload.messageType || payload.message_type || 'text',
+      filePath: payload.filePath || payload.file_path || null,
+      fileName: payload.fileName || payload.file_name || null,
+      hiddenMessage: payload.hiddenMessage || payload.hidden_message || null,
+      encrypted: false,
+      signalEncrypted: transportMessage.encrypted
     };
     
-    if (data.destroy_after && data.destroy_after > 0) {
-      msgData.destroyAfter = Math.floor(Date.now() / 1000) + data.destroy_after;
+    if (payload.destroy_after && payload.destroy_after > 0) {
+      msgData.destroyAfter = Math.floor(Date.now() / 1000) + payload.destroy_after;
     }
     
     try {

@@ -1,0 +1,147 @@
+export interface SignalPreKey {
+  keyId: number;
+  publicKey: string;
+}
+
+export interface SignalSignedPreKey {
+  keyId: number;
+  publicKey: string;
+  signature: string;
+}
+
+export interface SignalKeyBundle {
+  userId?: number;
+  identityPublicKey: string;
+  identityKeyFingerprint?: string;
+  signedPreKey: SignalSignedPreKey;
+  oneTimePreKeys?: SignalPreKey[];
+  oneTimePreKey?: SignalPreKey | null;
+}
+
+export interface SignalAccountResult {
+  userId: number;
+  keyBundle: SignalKeyBundle & { oneTimePreKeys: SignalPreKey[] };
+}
+
+export interface SignalEnvelope {
+  version: number;
+  type: 'signal_message';
+  algorithm: string;
+  senderUserId: number;
+  recipientUserId: number;
+  senderIdentityPublicKey: string;
+  header: {
+    dhPubKey: string;
+    n: number;
+    pn: number;
+  };
+  ciphertext: string;
+}
+
+export interface SignalRuntimeOptions {
+  baseUrl?: string;
+  userId: number | string;
+}
+
+export interface CreateAccountOptions {
+  opkCount?: number;
+}
+
+export interface EncryptMessageInput {
+  toUserId: number | string;
+  plaintext: string;
+  recipientBundle: SignalKeyBundle;
+}
+
+export interface DecryptMessageInput {
+  fromUserId: number | string;
+  envelope: SignalEnvelope;
+}
+
+function normalizeUserId(userId: number | string): number {
+  const normalized = Number(userId);
+  if (!Number.isInteger(normalized) || normalized <= 0) {
+    throw new Error(`Invalid Signal user id: ${userId}`);
+  }
+  return normalized;
+}
+
+function defaultSignalRuntimeUrl(): string {
+  const envUrl = import.meta.env?.VITE_SIGNAL_RUNTIME_URL;
+  if (envUrl) return envUrl;
+  return 'http://127.0.0.1:8765';
+}
+
+async function postJson<TResponse>(baseUrl: string, path: string, body: unknown): Promise<TResponse> {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error || `Signal runtime request failed: ${response.status}`);
+  }
+  if (payload?.ok === false) {
+    throw new Error(payload.error || 'Signal runtime request failed');
+  }
+  return payload as TResponse;
+}
+
+export class SignalHttpRuntime {
+  readonly baseUrl: string;
+  readonly userId: number;
+
+  constructor(options: SignalRuntimeOptions) {
+    this.baseUrl = (options.baseUrl || defaultSignalRuntimeUrl()).replace(/\/$/, '');
+    this.userId = normalizeUserId(options.userId);
+  }
+
+  createAccount(options: CreateAccountOptions = {}): Promise<SignalAccountResult> {
+    return postJson<SignalAccountResult>(this.baseUrl, '/accounts', {
+      userId: this.userId,
+      opkCount: options.opkCount ?? 50,
+    });
+  }
+
+  encryptMessage(input: EncryptMessageInput): Promise<SignalEnvelope> {
+    return postJson<SignalEnvelope>(this.baseUrl, '/messages/encrypt', {
+      fromUserId: this.userId,
+      toUserId: normalizeUserId(input.toUserId),
+      plaintext: input.plaintext,
+      recipientBundle: input.recipientBundle,
+    });
+  }
+
+  async decryptMessage(input: DecryptMessageInput): Promise<string> {
+    const result = await postJson<{ plaintext: string }>(this.baseUrl, '/messages/decrypt', {
+      userId: this.userId,
+      fromUserId: normalizeUserId(input.fromUserId),
+      envelope: input.envelope,
+    });
+    return result.plaintext;
+  }
+}
+
+export function isSignalEnvelope(value: unknown): value is SignalEnvelope {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<SignalEnvelope>;
+  return candidate.type === 'signal_message'
+    && typeof candidate.ciphertext === 'string'
+    && typeof candidate.senderIdentityPublicKey === 'string'
+    && !!candidate.header;
+}
+
+export function serializeSignalEnvelope(envelope: SignalEnvelope): string {
+  return JSON.stringify(envelope);
+}
+
+export function parseSignalEnvelope(content: string): SignalEnvelope | null {
+  try {
+    const parsed = JSON.parse(content);
+    return isSignalEnvelope(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}

@@ -64,8 +64,8 @@ export const authAPI = {
   // 获取用户信息
   getUserInfo: () => api.get('/v1/auth/me'),
   
-  // 获取用户加密密钥
-  getUserKeys: (userId) => api.get(`/v1/encryption/my-keys`)
+  // 获取当前用户 E2EE key bundle 状态
+  getUserKeys: () => api.get('/v1/e2ee/key-bundle/me')
 };
 
 // 联系人相关API
@@ -103,14 +103,17 @@ export const messageAPI = {
 
 // 密钥管理API
 export const keyAPI = {
-  // 上传公钥
-  uploadPublicKey: (publicKey) => api.post('/v1/keys/public', { publicKey }),
+  uploadKeyBundle: (bundle) => api.post('/v1/e2ee/key-bundle', bundle),
   
-  // 获取用户公钥
-  getPublicKey: (userId) => api.get(`/v1/keys/public/${userId}`),
+  getPreKeyBundle: (userId, consumeOneTimeKey = true) =>
+    api.get(`/v1/e2ee/key-bundle/${userId}`, { params: { consumeOneTimeKey } }),
   
-  // 获取所有联系人公钥
-  getAllPublicKeys: () => api.get('/v1/keys/public')
+  getMyKeyBundleStatus: () => api.get('/v1/e2ee/key-bundle/me'),
+
+  // 兼容旧调用名，实际返回当前 E2EE pre-key bundle
+  uploadPublicKey: (bundle) => api.post('/v1/e2ee/key-bundle', bundle),
+  getPublicKey: (userId) => api.get(`/v1/e2ee/key-bundle/${userId}`),
+  getAllPublicKeys: () => api.get('/v1/e2ee/key-bundle/me')
 };
 
 // WebRTC信令API
@@ -224,6 +227,9 @@ export const hybridApi = {
   getMessageHistory: messageAPI.getMessageHistory,
   
   // 密钥管理
+  uploadKeyBundle: keyAPI.uploadKeyBundle,
+  getPreKeyBundle: keyAPI.getPreKeyBundle,
+  getMyKeyBundleStatus: keyAPI.getMyKeyBundleStatus,
   uploadPublicKey: keyAPI.uploadPublicKey,
   getPublicKey: keyAPI.getPublicKey,
   getAllPublicKeys: keyAPI.getAllPublicKeys,

@@ -5,6 +5,8 @@ const api = axios.create({
   baseURL: config.API_BASE_URL + '/api',
 });
 
+const authHeaders = (token) => ({ headers: { Authorization: `Bearer ${token}` } });
+
 // 用户注册
 export function register(data) {
   // 后端实现：用户注册
@@ -20,31 +22,28 @@ export function login(data) {
 // 获取联系人列表
 export function getContacts(token) {
   // 后端实现：返回当前用户的联系人
-  return api.get('/v1/contacts', { headers: { Authorization: `Bearer ${token}` } });
+  return api.get('/v1/contacts', authHeaders(token));
 }
 
 // 添加好友
 export function addContact(token, friendId) {
-  // 后端实现：添加好友
-  return api.post('/v1/contacts/add', { friendId }, { headers: { Authorization: `Bearer ${token}` } });
+  // 后端实现：发送好友申请
+  return api.post('/v1/contacts/request', { to_user_id: friendId }, authHeaders(token));
 }
 
 // 获取公钥
 export function getPublicKey(token, userId) {
-  // 后端实现：获取指定用户的公钥
-  return api.get(`/v1/keys/public?userId=${userId}`, { headers: { Authorization: `Bearer ${token}` } });
+  return api.get(`/v1/e2ee/key-bundle/${userId}`, authHeaders(token));
 }
 
 // 上传公钥
-export function uploadPublicKey(token, publicKey) {
-  // 后端实现：上传当前用户的公钥
-  return api.post('/v1/keys/exchange', { publicKey }, { headers: { Authorization: `Bearer ${token}` } });
+export function uploadPublicKey(token, keyBundle) {
+  return api.post('/v1/e2ee/key-bundle', keyBundle, authHeaders(token));
 }
 
 // 获取密钥指纹
 export function getFingerprint(token) {
-  // 后端实现：返回当前用户的密钥指纹
-  return api.get('/v1/keys/fingerprint', { headers: { Authorization: `Bearer ${token}` } });
+  return api.get('/v1/e2ee/key-bundle/me', authHeaders(token));
 }
 
 // 获取消息历史
@@ -56,7 +55,5 @@ export function getMessageHistory(token, peerId, page = 1, limit = 50) {
 
 // 发送消息
 export function sendMessage(token, data) {
-  return api.post('/v1/messages/send', data, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
+  return api.post('/v1/messages', data, authHeaders(token));
 }

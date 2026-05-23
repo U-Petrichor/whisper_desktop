@@ -215,6 +215,7 @@ import api from '../api/hybrid-api';
 import { initializeUserEncryption, hasCompleteEncryptionKeys, validateUserKeys } from '../utils/encryption-keys';
 import { initDatabase } from '../client_db/database';
 import { checkUserLoggedInElsewhere, forceLogoutOtherSessions } from '../utils/single-login';
+import { extractAuthPayload, extractPayload } from '../utils/api-contract';
 
 const router = useRouter();
 
@@ -265,7 +266,8 @@ async function handleLogin() {
     });
 
     // 获取用户ID
-    const userId = response.data.data.user.id;
+    const authPayload = extractAuthPayload(response);
+    const userId = authPayload.user?.id || authPayload.user?.userId;
     
     // 检查用户是否已在其他页面登录
     const isLoggedInElsewhere = await checkUserLoggedInElsewhere(userId);
@@ -281,7 +283,7 @@ async function handleLogin() {
     }
 
     // 设置用户信息到store（现在是异步方法）
-    const setUserSuccess = await hybridStore.setUser(response.data.data.user, response.data.data.token);
+    const setUserSuccess = await hybridStore.setUser(authPayload.user, authPayload.token);
     
     if (!setUserSuccess) {
       errorMessage.value = '用户信息设置失败，请重试';
@@ -302,13 +304,16 @@ async function handleLogin() {
       try {
         // 从服务器获取用户的公钥和私钥
         const keyResponse = await authAPI.getUserKeys(hybridStore.user.id);
-        if (keyResponse.data && keyResponse.data.public_key) {
+        const keyPayload = extractPayload(keyResponse);
+        if (keyPayload && keyPayload.public_key) {
           // 初始化用户加密环境
           await initializeUserEncryption(
-            hybridStore.user,
-            hybridStore.token,
-            keyResponse.data.public_key,
-            keyResponse.data.registration_id || hybridStore.user.id
+            hybridStore.user.id,
+            {
+              public_key: keyPayload.public_key,
+              registration_id: keyPayload.registration_id || hybridStore.user.id,
+              prekey_bundle: keyPayload.prekey_bundle
+            }
           );
           console.log('用户加密环境初始化完成');
         } else {

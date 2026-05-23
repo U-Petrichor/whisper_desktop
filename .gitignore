@@ -12,6 +12,7 @@ dist-ssr/
 .env
 .env.*
 !.env.example
+.signal_state/
 
 # ==========================================
 # 3. Tauri & Rust 构建缓存 (🧹 避免系统路径幽灵)

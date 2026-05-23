@@ -298,6 +298,7 @@ import { authAPI } from '../api/hybrid-api'
 import api from '../api/hybrid-api'
 import { initializeUserEncryption } from '../utils/encryption-keys'
 import { storeUserKeys } from '../client_db/database'
+import { extractAuthPayload } from '../utils/api-contract'
 
 const router = useRouter()
 const isLoading = ref(false)
@@ -439,8 +440,9 @@ async function handleLogin() {
       username: loginForm.username,
       password: loginForm.password
     })
+    const authPayload = extractAuthPayload(response)
 
-    await hybridStore.setUser(response.data.data.user, response.data.data.token)
+    await hybridStore.setUser(authPayload.user, authPayload.token)
     
     console.log('登录成功，跳转到过渡页面')
     router.push('/login-transition')
@@ -483,10 +485,11 @@ async function handleRegister() {
       password: registerForm.password
     })
 
-    await hybridStore.setUser(response.data.user, response.data.token)
+    const authPayload = extractAuthPayload(response)
+    await hybridStore.setUser(authPayload.user, authPayload.token)
 
-    if (response.data.keys) {
-      await storeUserKeys(response.data.keys)
+    if (authPayload.keys) {
+      await storeUserKeys(authPayload.keys)
     }
 
     console.log('注册成功，跳转到过渡页面')

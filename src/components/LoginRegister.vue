@@ -117,8 +117,9 @@
 <script setup>
 import { ref, onUnmounted } from 'vue';
 import { login, register } from '../api';
-import api from '../api/hybrid-api';
+import { authAPI } from '../api/hybrid-api';
 import { initializeUserEncryption, hasCompleteEncryptionKeys, validateUserKeys } from '../utils/encryption-keys';
+import { extractAuthPayload, extractUserId } from '../utils/api-contract';
 
 const emit = defineEmits(['login']);
 
@@ -157,14 +158,14 @@ async function handleSubmit() {
     if (isLogin.value) {
       // 登录逻辑
       const res = await login({ username: username.value, password: password.value });
-      const { user, token } = res.data.data;
+      const { user, token } = extractAuthPayload(res);
       
       // 保存用户信息和token到localStorage
       localStorage.setItem('user', JSON.stringify(user));
       localStorage.setItem('token', token);
       
       // 检查用户是否有完整的加密密钥
-      const userId = parseInt(user.id);
+      const userId = extractUserId(user);
       const hasKeys = hasCompleteEncryptionKeys(userId);
       
       if (!hasKeys) {
@@ -172,9 +173,7 @@ async function handleSubmit() {
         
         try {
           // 从服务器获取用户的加密密钥信息
-          const keysResponse = await api.get('/v1/encryption/my-keys', {
-            headers: { Authorization: `Bearer ${token}` }
-          });
+          const keysResponse = await authAPI.getUserKeys(userId);
           
           if (keysResponse.data.success && keysResponse.data.data) {
             const serverKeys = keysResponse.data.data;
@@ -218,8 +217,9 @@ async function handleSubmit() {
       const registerRes = await register({ username: username.value, email: email.value, password: password.value });
       
       // 处理注册成功后的密钥存储
-      if (registerRes.data.success && registerRes.data.data) {
-        const { user, token, keys } = registerRes.data.data;
+      const registerPayload = extractAuthPayload(registerRes);
+      if (registerPayload.user && registerPayload.token) {
+        const { user, token, keys } = registerPayload;
         
         // 保存用户信息和token到localStorage
         localStorage.setItem('user', JSON.stringify(user));
@@ -230,7 +230,7 @@ async function handleSubmit() {
           // 构造加密数据对象
           const encryptionData = {
             public_key: keys.public_key,
-            registration_id: parseInt(user.id),
+            registration_id: extractUserId(user),
             prekey_bundle: {
               identity_key: keys.identity_key,
               signed_prekey: keys.signed_prekey,
@@ -240,7 +240,7 @@ async function handleSubmit() {
           };
           
           // 初始化用户加密环境（包括密钥保存和数据库初始化）
-          const encryptionInitSuccess = await initializeUserEncryption(parseInt(user.id), encryptionData);
+          const encryptionInitSuccess = await initializeUserEncryption(extractUserId(user), encryptionData);
           
           if (encryptionInitSuccess) {
             console.log('✅ 注册成功，密钥已生成并保存');

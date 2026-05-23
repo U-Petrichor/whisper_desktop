@@ -139,6 +139,7 @@ import { hybridStore } from '../store/hybrid-store';
 import { authAPI } from '../api/hybrid-api';
 import { initializeUserEncryption } from '../utils/encryption-keys';
 import { storeUserKeys } from '../client_db/database';
+import { extractAuthPayload, extractUserId } from '../utils/api-contract';
 
 const router = useRouter();
 
@@ -179,14 +180,15 @@ async function handleRegister() {
       email: registerForm.email,
       password: registerForm.password
     });
+    const authPayload = extractAuthPayload(response);
 
     // 注册成功，设置用户信息（异步方法）
-    await hybridStore.setUser(response.data.user, response.data.token);
+    await hybridStore.setUser(authPayload.user, authPayload.token);
 
     // 存储用户密钥到客户端本地存储
     try {
-      if (response.data.keys) {
-        await storeUserKeys(response.data.keys);
+      if (authPayload.keys) {
+        await storeUserKeys(authPayload.keys);
         console.log('✅ 用户密钥已存储到客户端本地存储');
       } else {
         console.warn('⚠️  注册响应中未包含密钥信息');
@@ -198,12 +200,12 @@ async function handleRegister() {
 
     // 初始化用户加密环境
     try {
-      await initializeUserEncryption(
-        response.data.user,
-        response.data.token,
-        response.data.public_key,
-        response.data.registration_id || response.data.user.id
-      );
+      const userId = extractUserId(authPayload.user);
+      await initializeUserEncryption(userId, {
+        public_key: authPayload.publicKey || authPayload.keys?.public_key || authPayload.keys?.publicKey,
+        registration_id: authPayload.registrationId || userId,
+        prekey_bundle: authPayload.keys?.prekey_bundle || authPayload.keys?.prekeyBundle
+      });
       console.log('用户加密环境初始化完成');
     } catch (encryptionError) {
       console.error('加密环境初始化失败:', encryptionError);

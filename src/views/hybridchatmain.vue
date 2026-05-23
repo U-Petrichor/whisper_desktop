@@ -227,6 +227,7 @@ import FriendRequestModal from '../components/FriendRequestModal.vue';
 import UserProfile from '../components/UserProfile.vue';
 import HybridMessaging from '../services/hybridmessaging';
 import { hybridApi } from '../api/hybrid-api.ts';
+import { extractPaginatedItems } from '../utils/api-contract.ts';
 
 const router = useRouter();
 
@@ -675,7 +676,7 @@ async function handleFriendRequestHandled(data) {
     // 直接重新加载联系人数据
     try {
       const response = await hybridApi.getContacts();
-      const contactsData = response.data.data.items || [];
+      const contactsData = extractPaginatedItems(response);
       hybridStore.setContacts(contactsData);
     } catch (error) {
       console.error('刷新联系人列表失败:', error);

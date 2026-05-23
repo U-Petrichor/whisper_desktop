@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "test:contract": "node --test test/api-contract.test.ts",
+    "test:signal": "node --test test/signal-runtime.test.ts",
     "preview": "vite preview",
     "tauri": "tauri"
   },

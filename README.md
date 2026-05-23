@@ -1,154 +1,180 @@
 # Whisper Desktop
 
-Whisper Desktop 是一个基于 Tauri + Vue 3 + TypeScript 的桌面端项目。
+Whisper Desktop 是 Whisper 的桌面客户端，基于 Vue 3、TypeScript、Vite 和 Tauri。它负责用户界面、本地消息缓存、WebSocket 长连接、调用后端 API，以及通过本地 Signal bridge 完成端到端加密原型。
 
-这份文档用于告诉组员：从 GitHub 克隆项目后，需要完成哪些准备工作，才能和当前开发环境保持一致，顺利进行本地调试、构建桌面应用和配置环境变量。
+## 功能总览
 
-## 开发环境要求
+- 登录/注册。
+- 联系人列表和好友申请。
+- 服务端中转聊天消息。
+- WebSocket 实时收消息和在线状态同步。
+- 本地消息缓存。
+- Signal E2EE 原型：
+  - 本地生成 Signal account state。
+  - 上传 public key bundle 到后端。
+  - 发送文本消息前加密成 Signal envelope。
+  - 接收 Signal envelope 后本地解密。
+- 头像、图片、文件、音视频通话相关界面和基础调用。
 
-- Node.js 18 及以上
-- npm
-- Rust 工具链
-- Tauri 开发环境
-- 建议使用 VS Code
+## 目录结构
 
-推荐安装的 VS Code 插件：
+```text
+src/
+  api/                 HTTP API 封装
+  client_db/           本地 SQLite 数据访问
+  components/          Vue 组件
+  config/              API 和 WebSocket 地址配置
+  services/            消息、Signal runtime、本地消息服务
+  store/               全局状态
+  utils/               API 契约、时间、key storage 等工具
+src-tauri/             Tauri 壳
+scripts/               本地辅助脚本，包含 Signal bridge
+test/                  Node 内置 test runner 测试
+docs/                  部署、Signal runtime 和更新说明
+```
 
-- Vue - Official
-- Tauri
-- rust-analyzer
+## 安装依赖
 
-## 克隆项目后第一步
-
-先进入项目目录并安装依赖：
-
-```bash
+```powershell
+cd E:\Code\python\whisper\whisper_desktop
 npm install
 ```
 
-如果你是第一次在本机开发 Tauri 项目，还需要确认本机已经装好 Rust 和 Tauri 所需的系统依赖。
+## 配置 `.env`
 
-## 配置 .env
+复制示例：
 
-项目依赖 `.env` 文件来指定后端 HTTP API 和 WebSocket 地址。
-
-先复制示例文件：
-
-```bash
+```powershell
 copy .env.example .env
 ```
 
-或者手动新建 `.env`，内容如下：
-
-```env
-VITE_API_BASE_URL=http://你的后端地址:8000
-VITE_WS_BASE_URL=ws://你的后端地址:8000
-```
-
-例如，如果你的后端部署在本机：
+本机单人调试：
 
 ```env
 VITE_API_BASE_URL=http://127.0.0.1:8000
 VITE_WS_BASE_URL=ws://127.0.0.1:8000
+VITE_SIGNAL_RUNTIME_URL=http://127.0.0.1:8765
 ```
 
-例如，如果你要连接测试服务器：
+局域网两台电脑聊天时，两台客户端必须指向同一个后端：
 
 ```env
-VITE_API_BASE_URL=http://服务器IP:8000
-VITE_WS_BASE_URL=ws://服务器IP:8000
+VITE_API_BASE_URL=http://192.168.1.10:8000
+VITE_WS_BASE_URL=ws://192.168.1.10:8000
+VITE_SIGNAL_RUNTIME_URL=http://127.0.0.1:8765
 ```
 
-注意事项：
+`VITE_SIGNAL_RUNTIME_URL` 仍然是本机地址，因为每台客户端都应该运行自己的本地 Signal bridge。
 
-- `VITE_API_BASE_URL` 是 HTTP 接口地址
-- `VITE_WS_BASE_URL` 是 WebSocket 地址
-- 如果后端启用了 HTTPS/WSS，需要把地址改成 `https://` 和 `wss://`
-- `.env` 是本地调试配置，不要把你自己的私有环境直接提交到仓库
+## 启动前端开发服务器
 
-## 常用命令
-
-### 启动前端调试
-
-```bash
-npm run dev
+```powershell
+npm run dev -- --host 127.0.0.1
 ```
 
-这个命令会启动 Vite 开发服务器，适合纯前端页面调试。
+默认端口：
 
-### 启动 Tauri 桌面端调试
+```text
+http://127.0.0.1:1420
+```
 
-```bash
+## 启动 Signal bridge
+
+Signal bridge 是当前原型阶段让桌面端调用 Python `SignalCryptoCore` 的本地服务。它保存本机私钥和 session state。
+
+```powershell
+cd E:\Code\python\whisper\whisper_desktop
+$env:PYTHONPATH="..\whisper_encryption"
+python scripts\signal_bridge.py serve --host 127.0.0.1 --port 8765 --state-dir .signal_state
+```
+
+不要提交 `.signal_state/`。它包含本地账号和会话状态。
+
+详见 [Signal runtime 文档](docs/SIGNAL_RUNTIME.md)。
+
+## 启动完整桌面端
+
+Tauri 需要 Rust/Cargo、WebView2，以及 Windows 上的 Visual Studio Build Tools MSVC + Windows SDK。
+
+```powershell
 npm run tauri dev
 ```
 
-这个命令会：
+当前已验证 Rust/Cargo 可用，但如果本机没有 VS Build Tools，`tauri dev` 会失败。先安装：
 
-- 启动前端开发服务
-- 编译并启动 Tauri 桌面应用
-- 适合完整联调桌面端功能，例如本地 SQLite、Tauri API、桌面窗口行为等
-
-### 构建前端资源
-
-```bash
-npm run build
+```text
+https://aka.ms/vs/17/release/vs_BuildTools.exe
 ```
 
-这个命令会先执行 TypeScript 检查，再构建前端静态资源。
+安装组件：
 
-### 构建桌面应用
+- MSVC C++ build tools
+- Windows SDK
 
-```bash
-npm run tauri build
-```
+## 常用脚本
 
-这个命令会生成桌面端安装包或可执行产物，适合发布前验证。
-
-## 推荐调试流程
-
-如果你想得到和当前主开发环境接近的体验，建议按下面顺序操作：
-
-- 克隆仓库
-- 执行 `npm install`
-- 配置 `.env`
-- 确保后端服务已经启动，并且 `.env` 指向正确地址
-- 执行 `npm run tauri dev`
-
-如果只是想快速看页面样式或排查普通前端逻辑，也可以只执行：
-
-```bash
-npm run dev
-```
-
-## 本地数据库说明
-
-当前桌面端本地数据库使用的是 Tauri 官方 SQLite 插件。
-
-这意味着：
-
-- 浏览器存储方案已经被移除
-- 需要在 Tauri 环境下调试数据库相关功能
-- 涉及本地消息、密钥、会话缓存时，优先使用 `npm run tauri dev` 进行联调
-
-## 联调前自检
-
-如果启动后出现接口或登录异常，请优先检查以下内容：
-
-- `.env` 是否存在
-- `VITE_API_BASE_URL` 是否能访问
-- `VITE_WS_BASE_URL` 是否正确
-- 后端服务是否已经启动
-- 本机是否已安装 Rust
-- 是否使用 `npm run tauri dev` 启动桌面端而不是仅使用浏览器访问
-
-## 当前脚本
-
-项目当前可用脚本如下：
-
-```bash
+```powershell
 npm run dev
 npm run build
-npm run preview
+npm run test:contract
+npm run test:signal
 npm run tauri dev
 npm run tauri build
 ```
+
+说明：
+
+- `test:contract` 检查前端 API 契约和旧接口残留。
+- `test:signal` 启动临时 Signal bridge，验证 Alice/Bob 可以真实加密解密。
+- `build` 执行 TypeScript 检查和 Vite 生产构建。
+
+## 两台电脑如何聊天
+
+Whisper 是 C/S 架构：
+
+```text
+客户端 A  -->  同一个后端服务器  <--  客户端 B
+```
+
+如果两台电脑各自启动自己的 `127.0.0.1:8000` 后端，它们不会互通。正确方式是部署一个共享后端，然后两台客户端都连接它。
+
+详见 [部署拓扑文档](docs/DEPLOYMENT_TOPOLOGY.md)。
+
+## E2EE 当前状态
+
+当前已经跑通真实 Signal 加密闭环：
+
+- 客户端本地 bridge 调用 Python `SignalCryptoEngine`。
+- 后端保存 public key bundle。
+- 发送方从后端获取接收方 pre-key bundle。
+- 发送方生成 Signal envelope。
+- 后端只保存/转发密文字符串。
+- 接收方本地 bridge 解密。
+
+原型限制：
+
+- `.signal_state` 目前不是加密存储。
+- Signal bridge 是本地 HTTP 原型，不是最终 Tauri-native 或 WASM 方案。
+- key rotation 和 one-time pre-key 自动补充还没有完整产品化。
+
+## 验证清单
+
+```powershell
+npm run test:signal
+npm run test:contract
+npm run build
+npm audit --json
+```
+
+预期：
+
+- Signal 测试通过。
+- 契约测试通过。
+- 前端构建通过。
+- audit vulnerabilities 为 0。
+
+## 更多文档
+
+- [部署拓扑](docs/DEPLOYMENT_TOPOLOGY.md)
+- [Signal runtime 原型](docs/SIGNAL_RUNTIME.md)
+- [Codex 接手更新报告](docs/CODEX_UPDATE_REPORT.md)

@@ -1,23 +1,3 @@
-# Whisper Desktop
-
-Whisper Desktop 是一个基于 Tauri + Vue 3 + TypeScript 的桌面端项目。
-
-这份文档用于告诉组员：从 GitHub 克隆项目后，需要完成哪些准备工作，才能和当前开发环境保持一致，顺利进行本地调试、构建桌面应用和配置环境变量。
-
-## 开发环境要求
-
-- Node.js 18 及以上
-- npm
-- Rust 工具链
-- Tauri 开发环境
-- 建议使用 VS Code
-
-推荐安装的 VS Code 插件：
-
-- Vue - Official
-- Tauri
-- rust-analyzer
-
 ## 克隆项目后第一步
 
 先进入项目目录并安装依赖：
@@ -32,39 +12,12 @@ npm install
 
 项目依赖 `.env` 文件来指定后端 HTTP API 和 WebSocket 地址。
 
-先复制示例文件：
+如果你要本地调试，复制示例文件然后自己设置：
 
-```bash
-copy .env.example .env
-```
+如果直接用服务器调试，请手动新建 `.env`，内容我会写在群里发的PDF内，因为项目是公开的，但是.env不能透露出去
 
-或者手动新建 `.env`，内容如下：
+服务器的用户名和密码我也会一并放在PDF内
 
-```env
-VITE_API_BASE_URL=http://你的后端地址:8000
-VITE_WS_BASE_URL=ws://你的后端地址:8000
-```
-
-例如，如果你的后端部署在本机：
-
-```env
-VITE_API_BASE_URL=http://127.0.0.1:8000
-VITE_WS_BASE_URL=ws://127.0.0.1:8000
-```
-
-例如，如果你要连接测试服务器：
-
-```env
-VITE_API_BASE_URL=http://服务器IP:8000
-VITE_WS_BASE_URL=ws://服务器IP:8000
-```
-
-注意事项：
-
-- `VITE_API_BASE_URL` 是 HTTP 接口地址
-- `VITE_WS_BASE_URL` 是 WebSocket 地址
-- 如果后端启用了 HTTPS/WSS，需要把地址改成 `https://` 和 `wss://`
-- `.env` 是本地调试配置，不要把你自己的私有环境直接提交到仓库
 
 ## 常用命令
 

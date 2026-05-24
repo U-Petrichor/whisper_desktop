@@ -120,6 +120,9 @@ import { login, register } from '../api';
 import { authAPI } from '../api/hybrid-api';
 import { initializeUserEncryption, hasCompleteEncryptionKeys, validateUserKeys } from '../utils/encryption-keys';
 import { extractAuthPayload, extractUserId } from '../utils/api-contract';
+import { createLogger } from '../utils/logger.ts';
+
+const log = createLogger('LoginRegister');
 
 const emit = defineEmits(['login']);
 
@@ -169,7 +172,6 @@ async function handleSubmit() {
       const hasKeys = hasCompleteEncryptionKeys(userId);
       
       if (!hasKeys) {
-        console.log('🔐 用户缺少加密密钥，正在从服务器获取...');
         
         try {
           // 从服务器获取用户的加密密钥信息
@@ -189,24 +191,22 @@ async function handleSubmit() {
             const encryptionInitSuccess = await initializeUserEncryption(userId, encryptionData);
             
             if (encryptionInitSuccess) {
-              console.log('✅ 用户加密密钥已从服务器同步');
             } else {
-              console.warn('⚠️ 加密密钥同步失败，但不影响登录');
+              log.warn('加密密钥同步失败，但不影响登录');
             }
           } else {
-            console.warn('⚠️ 服务器未返回有效的密钥信息');
+            log.warn('服务器未返回有效的密钥信息');
           }
         } catch (keyError) {
-          console.warn('⚠️ 获取服务器密钥失败:', keyError.message);
+          log.warn('获取服务器密钥失败:', keyError.message);
           // 不阻止登录，只是警告
         }
       } else {
         // 验证现有密钥
         const validation = validateUserKeys(userId);
         if (validation.valid) {
-          console.log('✅ 用户密钥验证通过');
         } else {
-          console.warn('⚠️ 本地密钥验证失败:', validation.message);
+          log.warn('本地密钥验证失败:', validation.message);
         }
       }
       
@@ -243,9 +243,8 @@ async function handleSubmit() {
           const encryptionInitSuccess = await initializeUserEncryption(extractUserId(user), encryptionData);
           
           if (encryptionInitSuccess) {
-            console.log('✅ 注册成功，密钥已生成并保存');
           } else {
-            console.warn('⚠️ 加密环境初始化失败，但不影响注册');
+            log.warn('加密环境初始化失败，但不影响注册');
           }
         }
         
@@ -253,12 +252,12 @@ async function handleSubmit() {
         emit('login', user, token);
         success.value = '注册成功！';
       } else {
-        console.warn('⚠️ 注册响应格式异常');
+        log.warn('注册响应格式异常');
         error.value = '注册失败，服务器响应异常';
       }
     }
   } catch (e) {
-    console.error('网络请求错误:', e);
+    log.error('网络请求错误:', e);
     // 检查是否是网络连接问题
     if (e.code === 'ERR_NETWORK' || e.code === 'NETWORK_ERROR' || 
         e.message?.includes('Network Error') || 
@@ -343,7 +342,7 @@ async function sendResetCode() {
       startCountdown();
     }
   } catch (e) {
-    console.error('发送验证码失败:', e);
+    log.error('发送验证码失败:', e);
     if (e.response?.data?.message) {
       error.value = e.response.data.message;
     } else if (e.response?.data?.detail) {
@@ -377,7 +376,7 @@ async function verifyResetCode() {
       stopCountdown();
     }
   } catch (e) {
-    console.error('验证码验证失败:', e);
+    log.error('验证码验证失败:', e);
     if (e.response?.data?.message) {
       error.value = e.response.data.message;
     } else if (e.response?.data?.detail) {
@@ -418,7 +417,7 @@ async function resetPassword() {
       }, 2000);
     }
   } catch (e) {
-    console.error('密码重置失败:', e);
+    log.error('密码重置失败:', e);
     if (e.response?.data?.message) {
       error.value = e.response.data.message;
     } else if (e.response?.data?.detail) {

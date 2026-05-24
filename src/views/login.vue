@@ -216,7 +216,9 @@ import { initializeUserEncryption, hasCompleteEncryptionKeys, validateUserKeys }
 import { initDatabase } from '../client_db/database';
 import { checkUserLoggedInElsewhere, forceLogoutOtherSessions } from '../utils/single-login';
 import { extractAuthPayload, extractPayload } from '../utils/api-contract';
+import { createLogger } from '@/utils/logger.ts';
 
+const log = createLogger('Login');
 const router = useRouter();
 
 const isLoading = ref(false);
@@ -273,7 +275,6 @@ async function handleLogin() {
     const isLoggedInElsewhere = await checkUserLoggedInElsewhere(userId);
     
     if (isLoggedInElsewhere) {
-      console.log('用户已在其他页面登录，强制登出其他会话');
       // 显示提示信息
       successMessage.value = '检测到您已在其他页面登录，正在强制登出其他会话...';
       // 强制登出其他会话
@@ -300,7 +301,6 @@ async function handleLogin() {
     const hasKeys = hasCompleteEncryptionKeys(hybridStore.user.id);
     
     if (!hasKeys) {
-      console.log('用户缺少加密密钥，尝试从服务器获取');
       try {
         // 从服务器获取用户的公钥和私钥
         const keyResponse = await authAPI.getUserKeys(hybridStore.user.id);
@@ -315,38 +315,34 @@ async function handleLogin() {
               prekey_bundle: keyPayload.prekey_bundle
             }
           );
-          console.log('用户加密环境初始化完成');
         } else {
-          console.warn('服务器未返回有效的密钥信息');
+          log.warn('服务器未返回有效的密钥信息');
         }
       } catch (keyError) {
-        console.error('获取用户密钥失败:', keyError);
+        log.error('获取用户密钥失败:', keyError);
         // 密钥获取失败不阻止登录，但会记录警告
       }
     } else {
       // 验证现有密钥的有效性
       const isValid = validateUserKeys(hybridStore.user.id);
       if (!isValid) {
-        console.warn('本地密钥验证失败，可能需要重新获取');
+        log.warn('本地密钥验证失败，可能需要重新获取');
       } else {
-        console.log('本地密钥验证通过');
       }
       
       // 确保数据库已初始化
       try {
         await initDatabase();
-        console.log('本地数据库初始化完成');
       } catch (dbError) {
-        console.error('数据库初始化失败:', dbError);
+        log.error('数据库初始化失败:', dbError);
       }
     }
     
-    console.log('登录成功，跳转到过渡页面');
     // 跳转到过渡页面
     router.push('/login-transition');
 
   } catch (error) {
-    console.error('登录失败:', error);
+    log.error('登录失败:', error);
     
     // 增加失败次数
     loginAttempts.value++;
@@ -446,7 +442,7 @@ async function sendResetCode() {
       startCountdown();
     }
   } catch (e) {
-    console.error('发送验证码失败:', e);
+    log.error('发送验证码失败:', e);
     if (e.response?.data?.message) {
       errorMessage.value = e.response.data.message;
     } else if (e.response?.data?.detail) {
@@ -480,7 +476,7 @@ async function verifyResetCode() {
       stopCountdown();
     }
   } catch (e) {
-    console.error('验证码验证失败:', e);
+    log.error('验证码验证失败:', e);
     if (e.response?.data?.message) {
       errorMessage.value = e.response.data.message;
     } else if (e.response?.data?.detail) {
@@ -522,7 +518,7 @@ async function resetPassword() {
       }, 2000);
     }
   } catch (e) {
-    console.error('密码重置失败:', e);
+    log.error('密码重置失败:', e);
     if (e.response?.data?.message) {
       errorMessage.value = e.response.data.message;
     } else if (e.response?.data?.detail) {

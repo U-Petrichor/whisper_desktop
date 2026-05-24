@@ -3,6 +3,9 @@
  * 确保同一用户不能在多个页面同时登录
  */
 
+import { createLogger } from './logger'
+const log = createLogger('SingleLogin')
+
 // 用于跨页面通信的频道
 let loginChannel = null;
 
@@ -35,7 +38,6 @@ export function initSingleLogin() {
         // 被其他页面强制登出
         const currentUser = JSON.parse(localStorage.getItem('user') || 'null');
         if (currentUser && currentUser.id === event.data.userId) {
-          console.log('检测到在其他页面登录，当前会话将被登出');
           // 清除本地存储
           localStorage.removeItem('user');
           localStorage.removeItem('token');
@@ -45,9 +47,8 @@ export function initSingleLogin() {
       }
     };
     
-    console.log('单点登录机制已初始化，会话ID:', sessionId);
   } else {
-    console.warn('当前浏览器不支持 BroadcastChannel API，单点登录功能将不可用');
+    log.warn('当前浏览器不支持 BroadcastChannel API，单点登录功能将不可用');
   }
 }
 

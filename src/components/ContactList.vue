@@ -43,6 +43,8 @@ import { store } from '../store'
 import { hybridStore } from '../store/hybrid-store.ts'
 import { hybridApi } from '../api/hybrid-api.ts'
 import AddContactModal from './AddContactModal.vue'
+import { createLogger } from '../utils/logger'
+const log = createLogger('ContactList')
 
 const emit = defineEmits(['select'])
 const showModal = ref(false)
@@ -61,7 +63,6 @@ function hideAddModal() {
 }
 
 function onContactAdded(contact) {
-  console.log('联系人添加成功:', contact)
   // 模态框会自动关闭，这里可以添加额外的处理逻辑
 }
 
@@ -81,9 +82,8 @@ async function deleteContact(contact) {
       store.currentChat = null
     }
     
-    console.log('联系人删除成功:', contact.username)
   } catch (error) {
-    console.error('删除联系人失败:', error)
+    log.error('删除联系人失败:', error)
     alert('删除联系人失败，请重试')
   }
 }

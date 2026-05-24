@@ -76,6 +76,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { hybridStore } from '../store/hybrid-store';
+import { createLogger } from '../utils/logger';
+const log = createLogger('SecurityPanel');
 
 const emit = defineEmits(['close']);
 
@@ -117,34 +119,28 @@ function saveSettings() {
 }
 
 function toggleEncryption() {
-  console.log('端到端加密：', endToEndEncryption.value);
   saveSettings();
 }
 
 function toggleP2PPreference() {
-  console.log('P2P偏好：', preferP2P.value);
   saveSettings();
 }
 
 function toggleAutoRetry() {
-  console.log('自动重连：', autoRetryConnection.value);
   saveSettings();
 }
 
 function toggleMessageHistory() {
-  console.log('消息历史：', saveMessageHistory.value);
   saveSettings();
 }
 
 function exportKeys() {
   // 实现密钥导出功能
-  console.log('导出密钥');
 }
 
 function regenerateKeys() {
   if (confirm('重新生成密钥将使现有的加密聊天记录无法解密，确定要继续吗？')) {
     // 实现密钥重新生成功能
-    console.log('重新生成密钥');
   }
 }
 

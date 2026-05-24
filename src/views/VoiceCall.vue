@@ -163,15 +163,11 @@ onMounted(async () => {
   
   // 从路由参数获取联系人信息
   const contactId = router.currentRoute.value.params.contactId;
-  console.log('[VoiceCall] 路由参数 contactId:', contactId);
-  console.log('[VoiceCall] 当前路由:', router.currentRoute.value);
   
   if (contactId) {
     contact.value = hybridStore.getContact(contactId);
-    console.log('[VoiceCall] 获取到的联系人信息:', contact.value);
-    console.log('[VoiceCall] 所有联系人列表:', hybridStore.getContacts());
   } else {
-    console.error('[VoiceCall] 缺少 contactId 参数');
+    log.error('缺少 contactId 参数');
   }
   
   await initializeCall();
@@ -198,9 +194,8 @@ watch(callStatus, async (newStatus) => {
 function initializeAudioContext() {
   try {
     audioContext.value = new (window.AudioContext || window.webkitAudioContext)();
-    console.log('[VoiceCall] 音频上下文初始化成功');
   } catch (error) {
-    console.error('[VoiceCall] 音频上下文初始化失败:', error);
+    log.error('音频上下文初始化失败:', error);
   }
 }
 
@@ -210,7 +205,6 @@ function startRingtone() {
   }
   
   try {
-    console.log('[VoiceCall] 开始播放响铃音');
     isRingtonePlaying.value = true;
     
     // 创建响铃音效的循环播放
@@ -260,7 +254,7 @@ function startRingtone() {
     }, 2000);
     
   } catch (error) {
-    console.error('[VoiceCall] 播放响铃音失败:', error);
+    log.error('播放响铃音失败:', error);
     isRingtonePlaying.value = false;
   }
 }
@@ -270,7 +264,6 @@ function stopRingtone() {
     return;
   }
   
-  console.log('[VoiceCall] 停止播放响铃音');
   isRingtonePlaying.value = false;
   
   // 清理定时器
@@ -303,23 +296,20 @@ function stopRingtone() {
 // 方法
 async function initializeCall() {
   try {
-    console.log('[VoiceCall] 开始初始化通话');
     
     // 检查联系人信息是否有效
     if (!contact.value || !contact.value.id) {
-      console.error('[VoiceCall] 联系人信息无效:', contact.value);
+      log.error('联系人信息无效:', contact.value);
       throw new Error('联系人信息无效或缺失');
     }
     
-    console.log('[VoiceCall] 联系人信息有效:', contact.value);
     
     const hybridMessaging = hybridStore.getHybridMessaging();
     if (!hybridMessaging) {
-      console.error('[VoiceCall] HybridMessaging服务未初始化');
+      log.error('HybridMessaging服务未初始化');
       throw new Error('消息服务未初始化，请先登录并等待服务启动');
     }
     
-    console.log('[VoiceCall] HybridMessaging服务已获取');
     
     // 检查WebSocket连接状态 - 改进的连接检查逻辑
     let wsConnected = false;
@@ -330,15 +320,9 @@ async function initializeCall() {
       wsConnected = hybridMessaging.ws.readyState === WebSocket.OPEN;
     }
     
-    console.log('[VoiceCall] WebSocket状态检查:', {
-      hasWs: !!hybridMessaging.ws,
-      readyState: wsStatus,
-      connected: wsConnected
-    });
     
     // 如果WebSocket未连接，尝试等待连接建立
     if (!wsConnected) {
-      console.log('[VoiceCall] WebSocket未连接，尝试等待连接建立...');
       
       // 等待最多3秒让WebSocket连接建立
       const maxWaitTime = 3000;
@@ -347,7 +331,6 @@ async function initializeCall() {
       while (Date.now() - startTime < maxWaitTime) {
         if (hybridMessaging.ws && hybridMessaging.ws.readyState === WebSocket.OPEN) {
           wsConnected = true;
-          console.log('[VoiceCall] WebSocket连接已建立');
           break;
         }
         
@@ -361,12 +344,11 @@ async function initializeCall() {
         const stateText = currentState === WebSocket.CONNECTING ? '正在连接' : 
                          currentState === WebSocket.CLOSING ? '正在关闭' : 
                          currentState === WebSocket.CLOSED ? '已关闭' : '未知状态';
-        console.error('[VoiceCall] WebSocket连接超时，当前状态:', stateText);
+        log.error('WebSocket连接超时，当前状态:', stateText);
         throw new Error(`网络连接不可用 (${stateText})，请检查网络连接后重试`);
       }
     }
     
-    console.log('[VoiceCall] WebSocket连接状态正常');
     
     // 设置语音通话回调
     hybridMessaging.onVoiceCallStatusChanged = handleVoiceCallStatusChange;
@@ -374,7 +356,6 @@ async function initializeCall() {
     
     // 检查是否是接听来电还是发起通话
     const callInfo = hybridStore.getCurrentCallInfo;
-    console.log('[VoiceCall] 当前通话信息:', callInfo);
     
     // 检查是否已经有活跃的语音连接（在acceptCall中已经处理过）
     const existingConnection = hybridMessaging.voiceConnections.get(contact.value.id);
@@ -382,7 +363,6 @@ async function initializeCall() {
     
     if (existingConnection && currentVoiceCall && currentVoiceCall.userId.toString() === contact.value.id.toString()) {
       // 通话已经在acceptCall中处理过，只需要设置UI状态
-      console.log('[VoiceCall] 通话已在acceptCall中处理，设置UI状态');
       callStatus.value = 'connecting';
       
       // 设置本地音频流
@@ -409,7 +389,6 @@ async function initializeCall() {
       
     } else if (callInfo && callInfo.type === 'incoming' && callInfo.fromUserId.toString() === contact.value.id.toString()) {
       // 这是一个新的来电，需要接听
-      console.log('[VoiceCall] 检测到新来电，开始接听');
       callStatus.value = 'connecting';
       try {
         // 传递加密密钥（如果有）
@@ -425,17 +404,14 @@ async function initializeCall() {
         
         // 显示加密状态
         if (result.encryptionEnabled) {
-          console.log('[VoiceCall] 加密通话已启用');
         }
         
-        console.log('[VoiceCall] 来电接听成功，等待连接建立');
       } catch (error) {
-        console.error('[VoiceCall] 接听失败:', error);
+        log.error('接听失败:', error);
         throw new Error('接听通话失败');
       }
     } else {
       // 发起新通话
-      console.log('[VoiceCall] 发起通话给用户:', contact.value.id);
       callStatus.value = 'connecting';
       const result = await hybridMessaging.initiateVoiceCall(contact.value.id);
       if (localAudio.value && result.localStream) {
@@ -443,11 +419,10 @@ async function initializeCall() {
         localStream.value = result.localStream;
       }
       callStatus.value = 'ringing';
-      console.log('[VoiceCall] 通话发起成功');
     }
     
   } catch (error) {
-    console.error('[VoiceCall] 初始化通话失败:', error);
+    log.error('初始化通话失败:', error);
     
     // 根据错误类型提供更具体的错误信息
     let errorMessage = '通话初始化失败';
@@ -497,24 +472,20 @@ function startCallTimer() {
 
 // 处理语音通话状态变化
 function handleVoiceCallStatusChange(event) {
-  console.log('[语音通话] 状态变化:', event);
   
   switch (event.type) {
     case 'remote_stream_received':
       if (remoteAudio.value && event.stream) {
         remoteAudio.value.srcObject = event.stream;
         activateCall();
-        console.log('[语音通话] 远程音频流已接收，通话已激活');
       }
       break;
       
     case 'call_connected':
       activateCall();
-      console.log('[语音通话] 通话已连接');
       break;
       
     case 'call_accepted':
-      console.log('[语音通话] 通话已被接受');
       break;
       
     case 'call_rejected':
@@ -530,7 +501,6 @@ function handleVoiceCallStatusChange(event) {
       
     case 'call_ended_local':
       // 本地主动结束通话，直接返回聊天界面
-      console.log('[语音通话] 本地主动结束通话');
       callStatus.value = 'ended';
       cleanup();
       router.push('/chat');
@@ -538,7 +508,6 @@ function handleVoiceCallStatusChange(event) {
       
     case 'call_ended_remote':
       // 远程结束通话，返回聊天界面但不刷新
-      console.log('[语音通话] 远程结束通话');
       callStatus.value = 'ended';
       cleanup();
       router.push('/chat');
@@ -546,7 +515,6 @@ function handleVoiceCallStatusChange(event) {
       
     case 'call_ended':
       // 兼容旧的通话结束事件
-      console.log('[语音通话] 通话结束');
       callStatus.value = 'ended';
       cleanup();
       router.push('/chat');
@@ -555,9 +523,7 @@ function handleVoiceCallStatusChange(event) {
     case 'connection_state_changed':
       if (event.state === 'connected') {
         activateCall();
-        console.log('[语音通话] 连接状态变为已连接');
       } else if (event.state === 'failed' || event.state === 'disconnected') {
-        console.log('[语音通话] 连接失败或断开:', event.state);
         // 设置状态但不调用endCall，避免递归
         callStatus.value = 'ended';
         cleanup();
@@ -579,7 +545,6 @@ function activateCall() {
     // 通话成功建立后，清理来电信息
     const callInfo = hybridStore.getCurrentCallInfo;
     if (callInfo && callInfo.type === 'incoming') {
-      console.log('[VoiceCall] 通话已建立，清理来电信息');
       hybridStore.clearCurrentCallInfo();
     }
   }
@@ -611,21 +576,17 @@ function minimizeCall() {
 async function endCall() {
   // 防止重复调用导致递归
   if (callStatus.value === 'ended') {
-    console.log('[VoiceCall] 通话已结束，跳过重复调用');
     return;
   }
   
-  console.log('[VoiceCall] 开始结束通话');
   callStatus.value = 'ended';
   
   const hybridMessaging = hybridStore.getHybridMessaging();
   if (hybridMessaging && contact.value) {
-    console.log(`[VoiceCall] 发送通话结束信号给用户 ${contact.value.id}`);
     try {
       await hybridMessaging.endVoiceCall(contact.value.id);
-      console.log('[VoiceCall] 通话结束信号发送成功');
     } catch (error) {
-      console.error('[VoiceCall] 发送通话结束信号失败:', error);
+      log.error('发送通话结束信号失败:', error);
     }
   }
   
@@ -636,13 +597,11 @@ async function endCall() {
 
 async function handleVoiceCallRejected({ fromUserId }) {
   if (contact.value && fromUserId.toString() === contact.value.id.toString()) {
-    console.log(`[语音通话] ${contact.value.username} 拒绝了通话`);
     callStatus.value = 'rejected';
     
     // 立即清理资源并结束通话
     const hybridMessaging = hybridStore.getHybridMessaging();
     if (hybridMessaging && contact.value) {
-      console.log(`[VoiceCall] 对方拒绝通话，立即结束通话`);
       // 不需要再发送结束信号，因为对方已经拒绝了
       // hybridMessaging.endVoiceCall(contact.value.id);
     }
@@ -657,7 +616,6 @@ async function handleVoiceCallRejected({ fromUserId }) {
 }
 
 async function cleanup() {
-  console.log('[VoiceCall] 开始清理资源');
   
   // 停止响铃音效
   stopRingtone();
@@ -687,11 +645,9 @@ async function cleanup() {
   const hybridMessaging = hybridStore.getHybridMessaging();
   if (hybridMessaging) {
     try {
-      console.log('[VoiceCall] 调用强制重置语音通话状态');
       await hybridMessaging.forceResetVoiceCallState();
-      console.log('[VoiceCall] 强制重置完成');
     } catch (error) {
-      console.error('[VoiceCall] 强制重置失败:', error);
+      log.error('强制重置失败:', error);
     }
   }
   
@@ -700,7 +656,6 @@ async function cleanup() {
   peerConnection.value = null;
   audioContext.value = null;
   
-  console.log('[VoiceCall] 资源清理完成');
 }
 
 function formatDuration(seconds) {

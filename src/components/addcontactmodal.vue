@@ -92,6 +92,8 @@ import { ref, computed, watch } from 'vue'
 import { hybridStore } from '../store/hybrid-store.ts'
 import { hybridApi } from '../api/hybrid-api.ts'
 import { extractPendingSentRequestUserIds } from '../utils/api-contract.ts'
+import { createLogger } from '../utils/logger'
+const log = createLogger('AddContact')
 
 export default {
   name: 'AddContactModal',
@@ -130,7 +132,7 @@ export default {
           }
         }
       } catch (error) {
-        console.error('加载已发送好友申请状态失败:', error)
+        log.error('加载已发送好友申请状态失败:', error)
       }
     }
     
@@ -144,7 +146,7 @@ export default {
           localStorage.setItem(storageKey, JSON.stringify(requestIds))
         }
       } catch (error) {
-        console.error('保存已发送好友申请状态失败:', error)
+        log.error('保存已发送好友申请状态失败:', error)
       }
     }
 
@@ -175,7 +177,7 @@ export default {
         pruneSentRequestsForContacts()
         saveSentRequestsToStorage()
       } catch (error) {
-        console.warn('同步已发送好友申请失败，使用本地缓存:', error)
+        log.warn('同步已发送好友申请失败，使用本地缓存:', error)
         loadSentRequestsFromStorage()
         pruneSentRequestsForContacts()
       }
@@ -213,7 +215,6 @@ export default {
       hasSearched.value = false
       try {
         const response = await hybridApi.searchUsers(query)
-        console.log('搜索响应:', response)
         
         // 检查响应数据结构
         if (response.data && response.data.success && response.data.data) {
@@ -228,9 +229,8 @@ export default {
           searchResults.value = [];
         }
         
-        console.log('搜索结果:', searchResults.value)
       } catch (error) {
-        console.error('搜索用户失败:', error)
+        log.error('搜索用户失败:', error)
         
         // 根据不同错误类型给出不同提示
         if (error.response?.status === 401) {
@@ -268,7 +268,7 @@ export default {
         alert('好友申请已发送，等待对方确认')
         
       } catch (error) {
-        console.error('发送好友申请失败:', error)
+        log.error('发送好友申请失败:', error)
         
         // 根据后端返回的错误信息显示具体提示
         let errorMessage = '发送好友申请失败，请重试';

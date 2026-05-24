@@ -69,6 +69,8 @@ import { ref, watch } from 'vue'
 import { hybridApi } from '../api/hybrid-api.ts'
 import { hybridStore } from '../store/hybrid-store.ts'
 import { toChinaTime, getChinaTime } from '../utils/timeUtils.ts'
+import { createLogger } from '../utils/logger'
+const log = createLogger('FriendRequestModal')
 
 export default {
   name: 'FriendRequestModal',
@@ -99,7 +101,7 @@ export default {
           requests.value = response.data.data || []
         }
       } catch (error) {
-        console.error('加载好友申请失败:', error)
+        log.error('加载好友申请失败:', error)
         alert('加载好友申请失败，请重试')
       } finally {
         loading.value = false
@@ -133,7 +135,7 @@ export default {
         alert(message)
         
       } catch (error) {
-        console.error('处理好友申请失败:', error)
+        log.error('处理好友申请失败:', error)
         alert('处理申请失败，请重试')
       } finally {
         processingRequests.value = processingRequests.value.filter(id => id !== requestId)

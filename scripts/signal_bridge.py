@@ -174,9 +174,52 @@ class SignalBridge:
     def __init__(self, state_dir: Path):
         self.store = SignalStateStore(state_dir)
 
+    def get_keys_status(self, payload: dict[str, Any]) -> dict[str, Any]:
+        user_id = int(payload["userId"])
+        account_path = self.store.account_path(user_id)
+        has_identity = account_path.exists()
+        fingerprint = None
+        if has_identity:
+            account = self.store.load_account(user_id)
+            fingerprint = hashlib.sha256(account.identity_key_pair["public"]).hexdigest()
+        return {"userId": user_id, "hasIdentity": has_identity, "fingerprint": fingerprint}
+
+    def load_keys(self, payload: dict[str, Any]) -> dict[str, Any]:
+        user_id = int(payload["userId"])
+        opk_count = int(payload.get("opkCount", 20))
+
+        account = self.store.load_account(user_id)
+
+        # 轮换签名预密钥（身份密钥不变）
+        account, new_spk_id, new_spk_pub, new_spk_sig = SignalCryptoEngine.rotate_signed_prekey(account)
+        self.store.save_account(user_id, account)
+
+        # 补充一次性预密钥
+        account, _new_opks = SignalCryptoEngine.replenish_one_time_prekeys(account, opk_count)
+        self.store.save_account(user_id, account)
+
+        # 构造完整 bundle（包含 identity + 新 SPK + 所有现存 OPK）
+        bundle = PreKeyBundle(
+            identity_key_pub=account.identity_key_pair["public"],
+            signed_prekey_id=new_spk_id,
+            signed_prekey_pub=new_spk_pub,
+            signed_prekey_sig=new_spk_sig,
+            one_time_prekeys={
+                key_id: pair["public"]
+                for key_id, pair in account.opk_pool.items()
+            },
+        )
+        return {"userId": user_id, "keyBundle": bundle_to_upload_json(user_id, bundle)}
+
     def create_account(self, payload: dict[str, Any]) -> dict[str, Any]:
         user_id = int(payload["userId"])
         opk_count = int(payload.get("opkCount", 50))
+
+        # 防线：如果已有身份密钥，加载而非重新生成
+        account_path = self.store.account_path(user_id)
+        if account_path.exists():
+            return self.load_keys(payload)
+
         account, bundle = SignalCryptoEngine.generate_initial_account(opk_count=opk_count)
         self.store.save_account(user_id, account)
         return {
@@ -286,6 +329,10 @@ def make_handler(bridge: SignalBridge):
                 body = read_json_body(self)
                 if path == "/accounts":
                     self.send_json(200, bridge.create_account(body))
+                elif path == "/keys/status":
+                    self.send_json(200, bridge.get_keys_status(body))
+                elif path == "/keys/load":
+                    self.send_json(200, bridge.load_keys(body))
                 elif path == "/messages/encrypt":
                     self.send_json(200, bridge.encrypt_message(body))
                 elif path == "/messages/decrypt":

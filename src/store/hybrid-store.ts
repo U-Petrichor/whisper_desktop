@@ -1,6 +1,6 @@
 import { reactive, computed } from 'vue';
 import CryptoJS from 'crypto-js';
-import { getChinaTimeISO, generateTempMessageId } from '../utils/timeUtils.ts';
+import { generateTempMessageId } from '../utils/timeUtils.ts';
 import { createLogger } from '../utils/logger.ts';
 const log = createLogger('HybridStore');
 
@@ -273,8 +273,21 @@ export const hybridStore = {
     }
   },
 
+  // 统一清洗消息的 timestamp 为 number (epoch ms)
+  cleanTimestamp(message) {
+    let ts = message.timestamp;
+    if (!ts) {
+      ts = Date.now();
+    } else if (typeof ts !== 'number') {
+      const parsed = Number(ts);
+      ts = Number.isNaN(parsed) ? new Date(ts).getTime() : parsed;
+    }
+    return { ...message, timestamp: ts };
+  },
+
   // 添加消息到对话
   addMessage(userId, message) {
+    const cleaned = this.cleanTimestamp(message);
     if (!state.conversations[userId]) {
       state.conversations[userId] = {
         messages: [],
@@ -285,25 +298,25 @@ export const hybridStore = {
     const conversation = state.conversations[userId];
 
     // 去重：先按ID查找，再按(from, to, timestamp)查找
-    const existingIndex = conversation.messages.findIndex(m => m.id === message.id);
+    const existingIndex = conversation.messages.findIndex(m => m.id === cleaned.id);
     if (existingIndex !== -1) {
-      conversation.messages.splice(existingIndex, 1, { ...message });
+      conversation.messages.splice(existingIndex, 1, { ...cleaned });
     } else {
       // 按发送方+接收方+时间戳去重，防止不同路径生成的不同临时ID导致重复
       const dedupIndex = conversation.messages.findIndex(m =>
-        String(m.from) === String(message.from)
-        && String(m.to) === String(message.to)
-        && m.timestamp === message.timestamp
+        String(m.from) === String(cleaned.from)
+        && String(m.to) === String(cleaned.to)
+        && String(m.timestamp) === String(cleaned.timestamp)
       );
       if (dedupIndex !== -1) {
-        conversation.messages.splice(dedupIndex, 1, { ...message });
+        conversation.messages.splice(dedupIndex, 1, { ...cleaned });
       } else {
-        conversation.messages = [...conversation.messages, { ...message }];
+        conversation.messages = [...conversation.messages, { ...cleaned }];
       }
     }
 
     // 按时间戳重新排序所有消息，确保正确的时间顺序
-    conversation.messages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    conversation.messages.sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
 
     // 更新最后一条消息（按时间戳排序后的最后一条）
     if (conversation.messages.length > 0) {
@@ -344,60 +357,38 @@ export const hybridStore = {
     });
     // 处理消息，特别是语音通话记录，并保留已解密的状态
     const processedMessages = messages.map(message => {
+      const cleaned = this.cleanTimestamp(message);
       // 查找现有消息中是否有相同ID的消息
-      const existingMessage = message.id ? existingMessagesMap.get(message.id) : null;
-      
+      const existingMessage = cleaned.id ? existingMessagesMap.get(cleaned.id) : null;
+
       // 如果找到现有消息，保留其extractedText字段
       if (existingMessage && existingMessage.extractedText) {
-        message.extractedText = existingMessage.extractedText;
+        cleaned.extractedText = existingMessage.extractedText;
       }
       
       // 如果是语音通话记录，解析content字段
-      if (message.messageType === 'voice_call' && message.content) {
+      if (cleaned.messageType === 'voice_call' && cleaned.content) {
         try {
-          const callInfo = JSON.parse(message.content);
+          const callInfo = JSON.parse(cleaned.content);
           return {
-            ...message,
+            ...cleaned,
             callDuration: callInfo.duration || 0,
             callStatus: callInfo.status || 'unknown',
             callStartTime: callInfo.startTime || null,
             callEndTime: callInfo.endTime || null
           };
         } catch (error) {
-          log.warn('解析语音通话记录失败:', error, message);
-          // 如果解析失败，保持原消息不变
-          return message;
+          log.warn('解析语音通话记录失败:', error, cleaned);
+          return cleaned;
         }
       }
-      return message;
+      return cleaned;
     });
     
     // 按时间戳排序消息
-    const sortedMessages = processedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    const sortedMessages = processedMessages.sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
     
     state.conversations[userId].messages = sortedMessages;
-
-    // 将新消息持久化到本地 SQLite（刷新后恢复的关键）
-    try {
-      const { addMessage } = await import('../client_db/database.ts');
-      for (const message of sortedMessages) {
-        if (message.id && !existingMessagesMap.has(message.id)) {
-          await addMessage({
-            id: message.id,
-            from: message.from,
-            to: message.to,
-            content: message.content,
-            timestamp: message.timestamp,
-            method: message.method || 'Server',
-            encrypted: message.encrypted || false,
-            messageType: message.messageType || 'text',
-            destroyAfter: message.destroyAfter || null,
-          });
-        }
-      }
-    } catch (error) {
-      log.error('保存消息到本地数据库失败:', error);
-    }
 
     // 更新最后一条消息
     if (sortedMessages.length > 0) {
@@ -581,7 +572,7 @@ export const hybridStore = {
       from: message.from,
       to: state.user?.id,
       content: message.content,
-      timestamp: message.timestamp || getChinaTimeISO(),
+      timestamp: message.timestamp || Date.now(),
       method: message.method || 'Server',
       encrypted: false,
       // 添加图片消息支持

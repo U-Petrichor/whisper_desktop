@@ -602,6 +602,8 @@ onUnmounted(() => {
 
 async function loadHistoryMessages(friendId) {
   if (!currentUser.value) return;
+  // 清空内存中的消息，避免与 DB 加载的数据合并时产生重复
+  hybridStore.setMessages(friendId, []);
   try {
     await waitForDatabase();
     const result = await getMessagesWithFriend(friendId, { limit: 50, offset: 0 });

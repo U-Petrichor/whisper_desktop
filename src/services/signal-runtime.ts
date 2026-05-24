@@ -34,6 +34,7 @@ export interface SignalEnvelope {
     dhPubKey: string;
     n: number;
     pn: number;
+    opkId?: number | null;
   };
   ciphertext: string;
 }
@@ -207,7 +208,7 @@ interface TauriKeyBundleRaw {
 
 interface TauriEnvelopeRaw {
   senderIdentityPublicKey: string;
-  header: { dhPubKey: string; n: number; pn: number };
+  header: { dhPubKey: string; n: number; pn: number; opkId?: number | null };
   ciphertext: string;
 }
 
@@ -269,6 +270,7 @@ export class SignalTauriRuntime {
         dhPubKey: raw.header.dhPubKey,
         n: raw.header.n,
         pn: raw.header.pn,
+        opkId: raw.header.opkId ?? null,
       },
       ciphertext: raw.ciphertext,
     };
@@ -281,9 +283,10 @@ export class SignalTauriRuntime {
       envelope: {
         senderIdentityPublicKey: input.envelope.senderIdentityPublicKey,
         header: {
-          dh_pub_key: input.envelope.header.dhPubKey,
+          dhPubKey: input.envelope.header.dhPubKey,
           n: input.envelope.header.n,
           pn: input.envelope.header.pn,
+          opkId: input.envelope.header.opkId ?? undefined,
         },
         ciphertext: input.envelope.ciphertext,
       },
@@ -298,7 +301,10 @@ export function isSignalEnvelope(value: unknown): value is SignalEnvelope {
   return candidate.type === 'signal_message'
     && typeof candidate.ciphertext === 'string'
     && typeof candidate.senderIdentityPublicKey === 'string'
-    && !!candidate.header;
+    && !!candidate.header
+    && typeof candidate.header.dhPubKey === 'string'
+    && typeof candidate.header.n === 'number'
+    && typeof candidate.header.pn === 'number';
 }
 
 export function serializeSignalEnvelope(envelope: SignalEnvelope): string {

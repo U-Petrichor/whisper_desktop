@@ -1,6 +1,5 @@
 import Database from '@tauri-apps/plugin-sql';
 import CryptoJS from 'crypto-js';
-import { getChinaTimeISO } from '../utils/timeUtils.ts';
 import { createLogger } from '../utils/logger.ts';
 const log = createLogger('Database');
 
@@ -139,7 +138,8 @@ const CREATE_TABLE_STATEMENTS = [
       encrypted INTEGER NOT NULL DEFAULT 0,
       is_read INTEGER NOT NULL DEFAULT 0,
       message_type TEXT NOT NULL DEFAULT 'text',
-      destroy_after INTEGER
+      destroy_after INTEGER,
+      UNIQUE(sender_id, receiver_id, timestamp)
     )
   `,
   `
@@ -310,12 +310,18 @@ function mapUserKeyRow(row: UserKeyRow | undefined | null): UserKeyRecord | null
 }
 
 function mapMessageRow(row: MessageRow): StoredMessage {
+  // timestamp 列是 TEXT，可能存着数字字符串或旧 ISO 字符串，统一转为 number
+  let ts: any = row.timestamp;
+  if (typeof ts === 'string') {
+    const parsed = Number(ts);
+    ts = Number.isNaN(parsed) ? new Date(ts).getTime() : parsed;
+  }
   return {
     id: row.id,
     from: row.sender_id,
     to: row.receiver_id,
     content: row.content,
-    timestamp: row.timestamp,
+    timestamp: ts,
     method: row.method,
     encrypted: fromDbBoolean(row.encrypted),
     isRead: fromDbBoolean(row.is_read),
@@ -366,6 +372,28 @@ async function initializeSchema() {
   for (const statement of CREATE_INDEX_STATEMENTS) {
     await execute(statement);
   }
+
+  await migrateMessagesUniqueConstraint();
+}
+
+async function migrateMessagesUniqueConstraint() {
+  try {
+    const rows = await select<{ sql: string }>(
+      `SELECT sql FROM sqlite_master WHERE type='table' AND name='messages'`
+    );
+    const schema = rows[0]?.sql || '';
+    if (schema.includes('UNIQUE(sender_id, receiver_id, timestamp)')) {
+      return;
+    }
+    log.info('Migrating messages table: adding UNIQUE constraint');
+    await execute(`DROP TABLE IF EXISTS messages`);
+    await execute(CREATE_TABLE_STATEMENTS[1]);
+    for (const stmt of CREATE_INDEX_STATEMENTS) {
+      await execute(stmt);
+    }
+  } catch (error) {
+    log.error('messages表迁移失败:', error);
+  }
 }
 
 async function countTable(tableName: string) {
@@ -387,7 +415,7 @@ async function getUserKeysById(userId: number) {
   return mapUserKeyRow(rows[0]);
 }
 
-async function upsertConversation(userId: number, lastMessage: string, timestamp: string) {
+async function upsertConversation(userId: number, lastMessage: string, timestamp: string | number) {
   await execute(
     `
       INSERT INTO conversations (user_id, last_message, last_message_time, unread_count)
@@ -402,7 +430,7 @@ async function upsertConversation(userId: number, lastMessage: string, timestamp
 }
 
 async function generateUserKeyPair(userId: number) {
-  const createdAt = getChinaTimeISO();
+  const createdAt = Date.now();
   const keyPair = {
     publicKey: `pub_${userId}_${Date.now()}`,
     privateKey: `priv_${userId}_${Date.now()}`
@@ -496,11 +524,11 @@ export const addMessage = async (message: MessageInput) => {
     const storedContent = message.encrypted && symmetricKey
       ? encryptContent(message.content, symmetricKey)
       : message.content;
-    const timestamp = message.timestamp || getChinaTimeISO();
+    const timestamp = message.timestamp || Date.now();
 
     const result = await execute(
       `
-        INSERT INTO messages (
+        INSERT OR IGNORE INTO messages (
           sender_id,
           receiver_id,
           content,
@@ -702,8 +730,8 @@ export const storeUserKeys = async (keyData: Partial<UserKeyRecord>) => {
       publicKey,
       privateKey
     });
-    const createdAt = existingKeys?.createdAt || keyData.createdAt || getChinaTimeISO();
-    const updatedAt = keyData.updatedAt || getChinaTimeISO();
+    const createdAt = existingKeys?.createdAt || keyData.createdAt || Date.now();
+    const updatedAt = keyData.updatedAt || Date.now();
 
     await execute(
       `

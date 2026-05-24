@@ -79,7 +79,7 @@ import { store } from '../store';
 import MessageInput from './messageinput.vue';
 import { getMessageHistory } from '../api';
 import config from '../config/config.ts';
-import { toChinaTime, getChinaTime } from '../utils/timeUtils.ts';
+import { formatTimestamp } from '../utils/timeUtils.ts';
 import { createLogger } from '../utils/logger';
 const log = createLogger('ChatWindow');
 
@@ -109,7 +109,7 @@ async function loadMessages(contactId) {
       id: msg.id,
       from: msg.from_id,
       content: msg.content,
-      time: new Date(msg.timestamp),
+      time: msg.timestamp,
       encrypted: msg.encrypted
     })).reverse(); // 反转顺序，最新消息在底部
     
@@ -210,62 +210,7 @@ function scrollToBottom() {
 }
 
 function formatTime(timestamp) {
-  try {
-    let date;
-    
-    // 统一处理不同格式的时间戳
-    if (timestamp instanceof Date) {
-      date = timestamp;
-    } else if (typeof timestamp === 'string') {
-      // 处理UTC时间戳格式
-      if (timestamp.endsWith('Z') || timestamp.includes('T')) {
-        date = new Date(timestamp);
-      } else {
-        // 假设是UTC时间戳，添加Z标识
-        date = new Date(timestamp + 'Z');
-      }
-    } else if (typeof timestamp === 'number') {
-      date = new Date(timestamp);
-    } else {
-      log.warn('未知的时间戳格式:', timestamp);
-      return '无效时间';
-    }
-    
-    // 检查日期是否有效
-    if (isNaN(date.getTime())) {
-      log.warn('无效的时间戳:', timestamp);
-      return '无效时间';
-    }
-    
-    // 转换为中国时间
-    const chinaDate = toChinaTime(date);
-    const now = getChinaTime();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-    const messageDate = new Date(chinaDate.getFullYear(), chinaDate.getMonth(), chinaDate.getDate());
-    
-    // 手动格式化时间，确保显示中国时间
-    const hours = chinaDate.getHours().toString().padStart(2, '0');
-    const minutes = chinaDate.getMinutes().toString().padStart(2, '0');
-    const timeStr = `${hours}:${minutes}`;
-    
-    if (messageDate.getTime() === today.getTime()) {
-      // 今天的消息只显示时间
-      return timeStr;
-    } else if (messageDate.getTime() === yesterday.getTime()) {
-      // 昨天的消息显示"昨天 时:分"
-      return `昨天 ${timeStr}`;
-    } else {
-      // 其他日期显示"月-日 时:分"
-      const month = (chinaDate.getMonth() + 1).toString().padStart(2, '0');
-      const day = chinaDate.getDate().toString().padStart(2, '0');
-      const monthDay = `${month}-${day}`;
-      return `${monthDay} ${timeStr}`;
-    }
-  } catch (error) {
-    log.error('formatTime错误:', error, timestamp);
-    return '时间错误';
-  }
+  return formatTimestamp(timestamp);
 }
 
 function toggleSecurity() {
@@ -330,7 +275,7 @@ function handleWebSocketMessage(data) {
         id: messageData.id,
         from: messageData.from,
         content: messageData.content,
-        time: new Date(messageData.timestamp),
+        time: messageData.timestamp || Date.now(),
         encrypted: messageData.encrypted
       };
       

@@ -32,16 +32,17 @@ impl SignalCryptoEngine {
             private: identity_sk.to_bytes().to_vec(),
         };
 
-        let signed_prekey_sk = SigningKey::generate(&mut rng);
-        let signed_prekey_pk = signed_prekey_sk.verifying_key();
-        let signature = identity_sk.sign(&signed_prekey_pk.to_bytes());
+        // Signed prekey is X25519-native (used for DH, not signing)
+        let signed_prekey_sk = X25519StaticSecret::random_from_rng(&mut rng);
+        let signed_prekey_pk = X25519PublicKey::from(&signed_prekey_sk);
+        let spk_signature = identity_sk.sign(signed_prekey_pk.as_bytes());
         let signed_prekey_id: u32 = 1;
 
         let signed_prekey_pair = SignedPreKeyPair {
             id: signed_prekey_id,
-            public: signed_prekey_pk.to_bytes().to_vec(),
+            public: signed_prekey_pk.as_bytes().to_vec(),
             private: signed_prekey_sk.to_bytes().to_vec(),
-            signature: signature.to_bytes().to_vec(),
+            signature: spk_signature.to_bytes().to_vec(),
         };
 
         let mut opk_pool = HashMap::new();
@@ -75,14 +76,15 @@ impl SignalCryptoEngine {
 
     pub fn rotate_signed_prekey(state: &LocalAccountState) -> (LocalAccountState, u32, Vec<u8>, Vec<u8>) {
         let mut rng = rand::thread_rng();
-        let new_sk = SigningKey::generate(&mut rng);
-        let new_pk = new_sk.verifying_key();
+        // Signed prekey is X25519-native
+        let new_sk = X25519StaticSecret::random_from_rng(&mut rng);
+        let new_pk = X25519PublicKey::from(&new_sk);
         let signature = SigningKey::from_bytes(&{
             let mut arr = [0u8; 32];
             arr.copy_from_slice(&state.identity_key_pair.private);
             arr
         })
-        .sign(&new_pk.to_bytes());
+        .sign(new_pk.as_bytes());
 
         let new_id = state.signed_prekey_pair.id + 1;
 
@@ -90,14 +92,14 @@ impl SignalCryptoEngine {
             identity_key_pair: state.identity_key_pair.clone(),
             signed_prekey_pair: SignedPreKeyPair {
                 id: new_id,
-                public: new_pk.to_bytes().to_vec(),
+                public: new_pk.as_bytes().to_vec(),
                 private: new_sk.to_bytes().to_vec(),
                 signature: signature.to_bytes().to_vec(),
             },
             opk_pool: state.opk_pool.clone(),
         };
 
-        (new_state, new_id, new_pk.to_bytes().to_vec(), signature.to_bytes().to_vec())
+        (new_state, new_id, new_pk.as_bytes().to_vec(), signature.to_bytes().to_vec())
     }
 
     pub fn replenish_one_time_prekeys(
@@ -129,10 +131,11 @@ impl SignalCryptoEngine {
         (new_state, new_one_time_prekeys)
     }
 
+    /// Returns (SessionState, opk_id_used) — opk_id is Some if an OPK was used in DH4.
     pub fn initiate_session_as_sender(
         state: &LocalAccountState,
         bundle: &PreKeyBundle,
-    ) -> SessionState {
+    ) -> (SessionState, Option<u32>) {
         let mut rng = rand::thread_rng();
 
         // Verify signed prekey signature
@@ -167,7 +170,8 @@ impl SignalCryptoEngine {
         // X3DH
         let ik_a_priv = ed25519_private_to_x25519_private(&sender_ik.to_bytes());
         let ik_b_pub = ed25519_public_to_x25519_public(remote_ik_pk_bytes);
-        let spk_b_pub = ed25519_public_to_x25519_public(remote_spk_bytes);
+        // SPK is X25519-native — use directly, no Ed25519 conversion needed
+        let spk_b_pub = bytes_to_x25519_pub(remote_spk_bytes);
         let ek_a = X25519StaticSecret::random_from_rng(&mut rng);
         let ek_a_pub = X25519PublicKey::from(&ek_a);
 
@@ -181,9 +185,9 @@ impl SignalCryptoEngine {
         dh_concat.extend_from_slice(dh2.as_bytes());
         dh_concat.extend_from_slice(dh3.as_bytes());
 
-        // DH4: use OPK if available
-        let (_opk_used, dh_concat) = if let Some(lowest_id) = select_lowest_prekey_id(&bundle.one_time_prekeys) {
-            let opk_b_pub = ed25519_public_to_x25519_public(&bundle.one_time_prekeys[&lowest_id]);
+        // DH4: use OPK if available — OPKs are X25519-native, use directly
+        let (opk_used, dh_concat) = if let Some(lowest_id) = select_lowest_prekey_id(&bundle.one_time_prekeys) {
+            let opk_b_pub = bytes_to_x25519_pub(&bundle.one_time_prekeys[&lowest_id]);
             let dh4 = ek_a.diffie_hellman(&opk_b_pub);
             let mut full = dh_concat;
             full.extend_from_slice(dh4.as_bytes());
@@ -214,9 +218,10 @@ impl SignalCryptoEngine {
             0,
             0,
             0,
+            opk_used,
         );
 
-        session
+        (session, opk_used)
     }
 
     pub fn initialize_session_as_receiver(
@@ -230,18 +235,20 @@ impl SignalCryptoEngine {
             arr
         });
 
-        let bob_spk_priv = {
+        // SPK private is X25519-native — use directly, no Ed25519 conversion needed
+        let bob_spk_priv_bytes: [u8; 32] = {
             let mut arr = [0u8; 32];
             arr.copy_from_slice(&state.signed_prekey_pair.private);
             arr
         };
-        let bob_spk = X25519StaticSecret::from(ed25519_private_to_x25519_private(&bob_spk_priv));
+        let bob_spk = X25519StaticSecret::from(bob_spk_priv_bytes);
 
         // X3DH
         let ik_a_pub = ed25519_public_to_x25519_public(alice_ik_pub);
-        let ek_a_pub = ed25519_public_to_x25519_public(&header.dh_pub_key);
+        // Ephemeral key is X25519-native — use directly
+        let ek_a_pub = bytes_to_x25519_pub(&header.dh_pub_key);
         let ik_b_priv = ed25519_private_to_x25519_private(&bob_ik.to_bytes());
-        let ik_b_pub = X25519PublicKey::from(&X25519StaticSecret::from(ik_b_priv));
+        let _ik_b_pub = X25519PublicKey::from(&X25519StaticSecret::from(ik_b_priv));
 
         let dh1 = X25519StaticSecret::from(ik_b_priv).diffie_hellman(&ik_a_pub);
         let dh2 = bob_spk.diffie_hellman(&ik_a_pub);
@@ -252,15 +259,17 @@ impl SignalCryptoEngine {
         dh_concat.extend_from_slice(dh2.as_bytes());
         dh_concat.extend_from_slice(dh3.as_bytes());
 
-        // Check if Alice used our OPK — try to match header.dh_pub_key against OPKs
-        // In the Signal Protocol, the OPK used is determined by which OPK was included
-        // in the bundle that Alice received. Bob doesn't know directly which one was used.
-        // For simplicity, we consume the lowest OPK if available.
+        // Use the OPK ID from the message header (sent by Alice) instead of guessing
         let mut new_opk_pool = state.opk_pool.clone();
-        let opk_used_id = new_opk_pool.keys().min().copied();
-        if let Some(opk_id) = opk_used_id {
+        if let Some(opk_id) = header.opk_id {
             if let Some(opk_kp) = new_opk_pool.remove(&opk_id) {
-                let opk_priv = X25519StaticSecret::from(opk_kp.private[..].try_into().unwrap_or([0u8; 32]));
+                // OPK private is X25519-native — use directly
+                let opk_priv_bytes: [u8; 32] = {
+                    let mut arr = [0u8; 32];
+                    arr.copy_from_slice(&opk_kp.private);
+                    arr
+                };
+                let opk_priv = X25519StaticSecret::from(opk_priv_bytes);
                 let dh4 = opk_priv.diffie_hellman(&ek_a_pub);
                 dh_concat.extend_from_slice(dh4.as_bytes());
             }
@@ -288,6 +297,7 @@ impl SignalCryptoEngine {
             0,
             0,
             0,
+            None,
         );
 
         let new_account = LocalAccountState {
@@ -316,7 +326,8 @@ impl SignalCryptoEngine {
                 let mut rng = rand::thread_rng();
                 let new_dh = X25519StaticSecret::random_from_rng(&mut rng);
                 let new_dh_pub = X25519PublicKey::from(&new_dh);
-                let remote_pub = ed25519_public_to_x25519_public(&internal.remote_dh_pub_key);
+                // remote_dh_pub_key stores X25519 bytes — use directly
+                let remote_pub = bytes_to_x25519_pub(&internal.remote_dh_pub_key);
                 let dh_output = new_dh.diffie_hellman(&remote_pub);
 
                 let (new_root, new_chain) =
@@ -336,10 +347,13 @@ impl SignalCryptoEngine {
         let ck = sending_chain_key.as_ref().expect("sending chain key must exist after ratchet");
         let (message_key, new_chain_key) = kdf_chain(ck);
 
+        // Include opk_id only in the very first message (from initial_opk_id)
+        let opk_id = internal.initial_opk_id;
         let aad = serialize_message_header(&MessageHeader {
             dh_pub_key: dh_key_pair.public.clone(),
             n: internal.ns,
             pn: internal.pn,
+            opk_id,
         });
         let ciphertext = aesgcm_encrypt(&message_key, plaintext, &aad);
 
@@ -352,12 +366,14 @@ impl SignalCryptoEngine {
             internal.ns + 1,
             internal.nr,
             internal.pn,
+            None, // initial_opk_id cleared after first message
         );
 
         let header = MessageHeader {
             dh_pub_key: dh_key_pair.public,
             n: internal.ns,
             pn: internal.pn,
+            opk_id,
         };
 
         (header, ciphertext, new_session)
@@ -386,6 +402,7 @@ impl SignalCryptoEngine {
                 internal.ns,
                 internal.nr,
                 internal.pn,
+                None,
             );
             new_session.internal_state.skipped_message_keys = new_skipped;
             return Ok((plaintext, new_session));
@@ -406,8 +423,8 @@ impl SignalCryptoEngine {
                 }
             }
 
-            // DH ratchet step
-            let new_remote_pub = ed25519_public_to_x25519_public(&header.dh_pub_key);
+            // DH ratchet step — header.dh_pub_key is X25519, use directly
+            let new_remote_pub = bytes_to_x25519_pub(&header.dh_pub_key);
             let dh_priv_bytes: [u8; 32] = {
                 let mut arr = [0u8; 32];
                 arr.copy_from_slice(&internal.dh_key_pair.private);
@@ -449,6 +466,7 @@ impl SignalCryptoEngine {
                 0,
                 header.n + 1,
                 header.n,
+                None,
             );
             new_session.internal_state.skipped_message_keys = skipped;
             return Ok((plaintext, new_session));
@@ -482,6 +500,7 @@ impl SignalCryptoEngine {
             internal.ns,
             header.n + 1,
             internal.pn,
+            None,
         );
         new_session.internal_state.skipped_message_keys = skipped;
 
@@ -517,6 +536,15 @@ fn ed25519_public_to_x25519_public(public_key_bytes: &[u8]) -> X25519PublicKey {
     let copy_len = u_bytes.len().min(32);
     fixed[..copy_len].copy_from_slice(&u_bytes[..copy_len]);
     X25519PublicKey::from(fixed)
+}
+
+/// Interpret raw 32 bytes as an X25519 public key (no Ed25519 conversion).
+/// Used for keys that are already X25519-native: OPK pub, ephemeral pub, SPK pub, DH ratchet pub.
+fn bytes_to_x25519_pub(bytes: &[u8]) -> X25519PublicKey {
+    assert_eq!(bytes.len(), 32, "X25519 public key must be 32 bytes");
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(bytes);
+    X25519PublicKey::from(arr)
 }
 
 fn derive_root_key(ikm: &[u8], salt: Option<&[u8]>) -> Vec<u8> {
@@ -578,6 +606,9 @@ fn serialize_message_header(header: &MessageHeader) -> Vec<u8> {
     out.extend_from_slice(&header.dh_pub_key);
     out.extend_from_slice(&header.n.to_le_bytes());
     out.extend_from_slice(&header.pn.to_le_bytes());
+    if let Some(opk_id) = header.opk_id {
+        out.extend_from_slice(&opk_id.to_le_bytes());
+    }
     out
 }
 
@@ -602,6 +633,7 @@ fn build_session_state(
     ns: u32,
     nr: u32,
     pn: u32,
+    initial_opk_id: Option<u32>,
 ) -> SessionState {
     SessionState {
         internal_state: SessionInternalState {
@@ -614,6 +646,7 @@ fn build_session_state(
             nr,
             pn,
             skipped_message_keys: HashMap::new(),
+            initial_opk_id,
         },
     }
 }

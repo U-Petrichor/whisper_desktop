@@ -315,28 +315,6 @@ class HybridMessaging {
           break;
       }
     };
-
-    this.ws.onclose = (event) => {
-      
-      if (!this.isReconnecting && this.reconnectAttempts < this.maxReconnectAttempts) {
-        this.isReconnecting = true;
-        
-        setTimeout(() => {
-          this.reconnectAttempts++;
-          this.connectSignalingServer().catch(error => {
-            log.error('重连失败:', error);
-            this.isReconnecting = false;
-          });
-        }, 2000 * this.reconnectAttempts); // 递增延迟
-      } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-        log.error('达到最大重连次数，停止重连');
-        this.isReconnecting = false;
-      }
-    };
-
-    this.ws.onerror = (error) => {
-      log.error('WebSocket错误:', error);
-    };
   }
 
   // P2P能力注册功能已移除
@@ -367,23 +345,24 @@ class HybridMessaging {
         }
       }
       
-      // 检查用户状态并尝试即时P2P连接
-      const userStatus = await this.checkUserStatus(toUserId);
-      
-      if (userStatus.online && userStatus.supportsP2P) {
-        try {
-          const p2pResult: any = await this.sendP2PMessage(toUserId, content, options);
-          if (p2pResult.success) {
-            return { success: true, method: 'P2P', ...p2pResult };
-          }
-        } catch (p2pError: any) {
-          log.warn('P2P发送失败，回退到服务器模式:', p2pError.message);
-          // P2P失败时不抛出错误，继续使用服务器转发
-        }
-      } else {
-      }
-      
-      // P2P失败或用户离线，使用服务器转发
+      // P2P暂时禁用，固定使用服务器转发
+      // const userStatus = await this.checkUserStatus(toUserId);
+      // if (userStatus.online && userStatus.supportsP2P) {
+      //   try {
+      //     const p2pResult: any = await this.sendP2PMessage(toUserId, content, options);
+      //     if (p2pResult.success) {
+      //       return { success: true, method: 'P2P', ...p2pResult };
+      //     }
+      //   } catch (p2pError: any) {
+      //     log.warn('P2P发送失败，回退到服务器模式:', p2pError.message);
+      //     this.p2pConnections.delete(toUserId);
+      //     if (this.peerConnections.has(toUserId)) {
+      //       this.peerConnections.get(toUserId)?.close();
+      //       this.peerConnections.delete(toUserId);
+      //     }
+      //   }
+      // }
+
       const serverResult = await this.sendServerMessage(toUserId, content, options);
       return serverResult;
       
@@ -681,6 +660,14 @@ class HybridMessaging {
       };
       
       peerConnection.oniceconnectionstatechange = () => {
+        if (peerConnection.iceConnectionState === 'failed' || peerConnection.iceConnectionState === 'closed') {
+          log.warn(`接收方ICE连接失败: ${peerConnection.iceConnectionState}`);
+          this.p2pConnections.delete(fromUserId);
+          if (this.peerConnections.has(fromUserId)) {
+            this.peerConnections.delete(fromUserId);
+          }
+          try { peerConnection.close(); } catch {}
+        }
       };
 
       // 设置远程描述
@@ -811,7 +798,20 @@ class HybridMessaging {
       }
       
       await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-      
+
+      // 回放缓冲的ICE候选
+      const pending = this.pendingIceCandidates?.get(fromUserId);
+      if (pending && pending.length > 0) {
+        for (const candidate of pending) {
+          try {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (e) {
+            log.warn(`回放ICE候选失败:`, e);
+          }
+        }
+        this.pendingIceCandidates.delete(fromUserId);
+      }
+
     } catch (error) {
       const fromUserId = data.from;
       log.error(`处理来自 ${fromUserId} 的Answer失败:`, error);

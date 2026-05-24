@@ -138,7 +138,8 @@ const CREATE_TABLE_STATEMENTS = [
       encrypted INTEGER NOT NULL DEFAULT 0,
       is_read INTEGER NOT NULL DEFAULT 0,
       message_type TEXT NOT NULL DEFAULT 'text',
-      destroy_after INTEGER
+      destroy_after INTEGER,
+      UNIQUE(sender_id, receiver_id, timestamp)
     )
   `,
   `
@@ -371,6 +372,28 @@ async function initializeSchema() {
   for (const statement of CREATE_INDEX_STATEMENTS) {
     await execute(statement);
   }
+
+  await migrateMessagesUniqueConstraint();
+}
+
+async function migrateMessagesUniqueConstraint() {
+  try {
+    const rows = await select<{ sql: string }>(
+      `SELECT sql FROM sqlite_master WHERE type='table' AND name='messages'`
+    );
+    const schema = rows[0]?.sql || '';
+    if (schema.includes('UNIQUE(sender_id, receiver_id, timestamp)')) {
+      return;
+    }
+    log.info('Migrating messages table: adding UNIQUE constraint');
+    await execute(`DROP TABLE IF EXISTS messages`);
+    await execute(CREATE_TABLE_STATEMENTS[1]);
+    for (const stmt of CREATE_INDEX_STATEMENTS) {
+      await execute(stmt);
+    }
+  } catch (error) {
+    log.error('messages表迁移失败:', error);
+  }
 }
 
 async function countTable(tableName: string) {
@@ -392,7 +415,7 @@ async function getUserKeysById(userId: number) {
   return mapUserKeyRow(rows[0]);
 }
 
-async function upsertConversation(userId: number, lastMessage: string, timestamp: string) {
+async function upsertConversation(userId: number, lastMessage: string, timestamp: string | number) {
   await execute(
     `
       INSERT INTO conversations (user_id, last_message, last_message_time, unread_count)
@@ -505,7 +528,7 @@ export const addMessage = async (message: MessageInput) => {
 
     const result = await execute(
       `
-        INSERT INTO messages (
+        INSERT OR IGNORE INTO messages (
           sender_id,
           receiver_id,
           content,

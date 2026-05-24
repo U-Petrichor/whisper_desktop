@@ -56,3 +56,22 @@ export function formatTimestamp(timestamp) {
 export function generateTempMessageId() {
   return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
+
+/**
+ * 获取当前北京时间 ISO 字符串
+ * @returns {string} 北京时间 ISO 格式字符串
+ */
+export function getChinaTimeISO(): string {
+  return new Date(Date.now() + CHINA_OFFSET_MS).toISOString().replace('Z', '+08:00');
+}
+
+/** 获取当前北京时间的 Date 对象 */
+export function getChinaTime(): Date {
+  return new Date(Date.now() + CHINA_OFFSET_MS);
+}
+
+/** 将时间字符串/时间戳转为北京时间的 Date 对象 */
+export function toChinaTime(input: string | number): Date {
+  const ts = typeof input === 'number' ? input : new Date(input).getTime();
+  return new Date(ts + CHINA_OFFSET_MS);
+}

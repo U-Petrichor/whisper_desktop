@@ -47,6 +47,16 @@ export interface CreateAccountOptions {
   opkCount?: number;
 }
 
+export interface SignalKeyStatusResult {
+  userId: number;
+  hasIdentity: boolean;
+  fingerprint: string | null;
+}
+
+export interface SignalLoadKeysOptions {
+  opkCount?: number;
+}
+
 export interface EncryptMessageInput {
   toUserId: number | string;
   plaintext: string;
@@ -105,6 +115,19 @@ export class SignalHttpRuntime {
     });
   }
 
+  getKeyStatus(): Promise<SignalKeyStatusResult> {
+    return postJson<SignalKeyStatusResult>(this.baseUrl, '/keys/status', {
+      userId: this.userId,
+    });
+  }
+
+  loadKeys(options: SignalLoadKeysOptions = {}): Promise<SignalAccountResult> {
+    return postJson<SignalAccountResult>(this.baseUrl, '/keys/load', {
+      userId: this.userId,
+      opkCount: options.opkCount ?? 20,
+    });
+  }
+
   encryptMessage(input: EncryptMessageInput): Promise<SignalEnvelope> {
     return postJson<SignalEnvelope>(this.baseUrl, '/messages/encrypt', {
       fromUserId: this.userId,
@@ -119,6 +142,151 @@ export class SignalHttpRuntime {
       userId: this.userId,
       fromUserId: normalizeUserId(input.fromUserId),
       envelope: input.envelope,
+    });
+    return result.plaintext;
+  }
+}
+
+// ── SignalTauriRuntime: calls Rust engine via Tauri commands ──────────
+
+import { invoke } from '@tauri-apps/api/core';
+
+function bundleToTauriFormat(bundle: SignalKeyBundle): {
+  identityPublicKey: string;
+  signedPreKeyId: number;
+  signedPreKeyPublic: string;
+  signedPreKeySignature: string;
+  oneTimePreKeys: Record<number, string>;
+} {
+  const otpMap: Record<number, string> = {};
+  if (bundle.oneTimePreKeys) {
+    for (const prekey of bundle.oneTimePreKeys) {
+      otpMap[prekey.keyId] = prekey.publicKey;
+    }
+  }
+  if (bundle.oneTimePreKey) {
+    otpMap[bundle.oneTimePreKey.keyId] = bundle.oneTimePreKey.publicKey;
+  }
+
+  return {
+    identityPublicKey: bundle.identityPublicKey,
+    signedPreKeyId: bundle.signedPreKey.keyId,
+    signedPreKeyPublic: bundle.signedPreKey.publicKey,
+    signedPreKeySignature: bundle.signedPreKey.signature,
+    oneTimePreKeys: otpMap,
+  };
+}
+
+function tauriBundleToKeyBundle(
+  result: { keyBundle: TauriKeyBundleRaw }
+): SignalKeyBundle & { oneTimePreKeys: SignalPreKey[] } {
+  const raw = result.keyBundle;
+  const otps: SignalPreKey[] = Object.entries(raw.oneTimePreKeys).map(([id, pub]) => ({
+    keyId: Number(id),
+    publicKey: pub as string,
+  }));
+
+  return {
+    identityPublicKey: raw.identityKeyPub,
+    signedPreKey: {
+      keyId: raw.signedPreKeyId,
+      publicKey: raw.signedPreKeyPub,
+      signature: raw.signedPreKeySig,
+    },
+    oneTimePreKeys: otps,
+  };
+}
+
+interface TauriKeyBundleRaw {
+  identityKeyPub: string;
+  signedPreKeyId: number;
+  signedPreKeyPub: string;
+  signedPreKeySig: string;
+  oneTimePreKeys: Record<string, string>;
+}
+
+interface TauriEnvelopeRaw {
+  senderIdentityPublicKey: string;
+  header: { dhPubKey: string; n: number; pn: number };
+  ciphertext: string;
+}
+
+export class SignalTauriRuntime {
+  readonly userId: number;
+
+  constructor(options: SignalRuntimeOptions) {
+    this.userId = normalizeUserId(options.userId);
+  }
+
+  async createAccount(options: CreateAccountOptions = {}): Promise<SignalAccountResult> {
+    const result = await invoke<{ keyBundle: TauriKeyBundleRaw }>('signal_create_account', {
+      userId: this.userId,
+      opkCount: options.opkCount ?? 50,
+    });
+    return {
+      userId: this.userId,
+      keyBundle: tauriBundleToKeyBundle(result),
+    };
+  }
+
+  async getKeyStatus(): Promise<SignalKeyStatusResult> {
+    const result = await invoke<{ hasIdentity: boolean; fingerprint: string | null }>('signal_get_key_status', {
+      userId: this.userId,
+    });
+    return {
+      userId: this.userId,
+      hasIdentity: result.hasIdentity,
+      fingerprint: result.fingerprint,
+    };
+  }
+
+  async loadKeys(options: SignalLoadKeysOptions = {}): Promise<SignalAccountResult> {
+    const result = await invoke<{ keyBundle: TauriKeyBundleRaw }>('signal_load_keys', {
+      userId: this.userId,
+      opkCount: options.opkCount ?? 20,
+    });
+    return {
+      userId: this.userId,
+      keyBundle: tauriBundleToKeyBundle(result),
+    };
+  }
+
+  async encryptMessage(input: EncryptMessageInput): Promise<SignalEnvelope> {
+    const raw = await invoke<TauriEnvelopeRaw>('signal_encrypt_message', {
+      fromUserId: this.userId,
+      toUserId: normalizeUserId(input.toUserId),
+      plaintext: input.plaintext,
+      recipientBundle: bundleToTauriFormat(input.recipientBundle),
+    });
+    return {
+      version: 1,
+      type: 'signal_message',
+      algorithm: 'signal',
+      senderUserId: this.userId,
+      recipientUserId: normalizeUserId(input.toUserId),
+      senderIdentityPublicKey: raw.senderIdentityPublicKey,
+      header: {
+        dhPubKey: raw.header.dhPubKey,
+        n: raw.header.n,
+        pn: raw.header.pn,
+      },
+      ciphertext: raw.ciphertext,
+    };
+  }
+
+  async decryptMessage(input: DecryptMessageInput): Promise<string> {
+    const result = await invoke<{ plaintext: string }>('signal_decrypt_message', {
+      userId: this.userId,
+      fromUserId: normalizeUserId(input.fromUserId),
+      envelope: {
+        senderIdentityPublicKey: input.envelope.senderIdentityPublicKey,
+        header: {
+          dh_pub_key: input.envelope.header.dhPubKey,
+          n: input.envelope.header.n,
+          pn: input.envelope.header.pn,
+        },
+        ciphertext: input.envelope.ciphertext,
+      },
     });
     return result.plaintext;
   }

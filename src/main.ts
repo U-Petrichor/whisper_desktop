@@ -1,3 +1,4 @@
+import './assets/design-tokens.css';
 import { createApp } from 'vue';
 import App from './App.vue';
 
@@ -5,6 +6,8 @@ import App from './App.vue';
 import router from './router';
 import { hybridStore } from './store/hybrid-store';
 import { initSingleLogin } from './utils/single-login';
+import { createLogger } from './utils/logger';
+const log = createLogger('Main');
 
 const app = createApp(App);
 
@@ -26,8 +29,8 @@ app.use(router);
 initSingleLogin();
 
 // 启动日志
-console.log('🚀 正在启动 Whisper 桌面端应用...');
-console.log('💡 本地数据库将在用户登录后初始化');
-console.log('🔐 单点登录机制已启用');
+log.info('正在启动 Whisper 桌面端应用');
+log.info('本地数据库将在用户登录后初始化');
+log.info('单点登录机制已启用');
 
 app.mount('#app');

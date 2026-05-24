@@ -25,27 +25,22 @@
       
       <!-- 功能按钮 -->
       <div v-if="contact" class="action-buttons">
-        <button 
-          @click="showHistoryModal" 
-          class="history-btn"
-          title="查看历史记录"
-        >
-          📋
+        <button @click="showHistoryModal" class="action-btn" title="查看历史记录">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 8v4l3 3"/>
+            <circle cx="12" cy="12" r="9"/>
+          </svg>
         </button>
-        <button 
-          @click="showCallTypeSelector" 
-          :disabled="!contact.online"
-          class="voice-call-btn"
-          title="发起通话"
-        >
-          📞
+        <button @click="showCallTypeSelector" :disabled="!contact.online" class="action-btn" title="发起通话">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0118 6.92z"/>
+          </svg>
         </button>
-        <button 
-          @click="resetVoiceCallState" 
-          class="reset-call-btn"
-          title="重置通话状态"
-        >
-          🔄
+        <button @click="resetVoiceCallState" class="action-btn" title="重置通话状态">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 4v6h6"/>
+            <path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>
+          </svg>
         </button>
       </div>
       
@@ -471,7 +466,9 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { hybridStore } from '../store/hybrid-store';
-import { getMessagesWithFriend } from '@/client_db/database';
+import { createLogger } from '@/utils/logger.ts';
+const log = createLogger('HybridChatWindow');
+import { getMessagesWithFriend, waitForDatabase } from '@/client_db/database';
 import localMessageService from '@/services/localMessageService.ts';
 import { hybridApi } from '@/api/hybrid-api';
 import HybridMessageInput from './hybridmessageinput.vue';
@@ -529,26 +526,13 @@ const currentUser = computed(() => hybridStore.user);
 const messages = computed(() => {
   if (!contact.value) return [];
   const msgs = hybridStore.getMessages(contact.value.id);
-  console.log(`HybridChatWindow computed messages for ${contact.value.id}:`, msgs.length);
   
   // 调试模式下输出详细的消息信息
   if (debugMode.value && msgs.length > 0) {
-    console.log('=== 消息调试信息 ===');
     msgs.forEach((msg, index) => {
       if (msg.messageType === 'file' || msg.type === 'file') {
-        console.log(`消息 ${index + 1}:`, {
-          id: msg.id,
-          messageType: msg.messageType,
-          type: msg.type,
-          filePath: msg.filePath,
-          file_path: msg.file_path,
-          fileName: msg.fileName,
-          file_name: msg.file_name,
-          content: msg.content
-        });
       }
     });
-    console.log('=== 消息调试信息结束 ===');
   }
   
   return msgs;
@@ -590,7 +574,6 @@ watch(() => contact.value, async (newContact, oldContact) => {
 // 监听联系人头像变化，确保头像实时更新
 watch(() => contact.value?.avatar, (newAvatar, oldAvatar) => {
   if (newAvatar !== oldAvatar) {
-    console.log(`联系人 ${contact.value?.username} 的头像已更新:`, newAvatar);
     // 触发响应式更新
     nextTick();
   }
@@ -610,22 +593,6 @@ onMounted(async () => {
   
   // 启动阅后即焚倒计时
   startBurnAfterTimer();
-  
-  // 在控制台提供调试功能
-  if (typeof window !== 'undefined') {
-    window.enableFileDebugMode = () => {
-      debugMode.value = true;
-      console.log('✅ 文件调试模式已启用');
-      console.log('💡 现在文件消息将显示详细的字段信息');
-    };
-    window.disableFileDebugMode = () => {
-      debugMode.value = false;
-      console.log('❌ 文件调试模式已禁用');
-    };
-    console.log('💡 调试提示: 在控制台输入以下命令:');
-    console.log('  - enableFileDebugMode() 启用文件调试模式');
-    console.log('  - disableFileDebugMode() 禁用文件调试模式');
-  }
 });
 
 onUnmounted(() => {
@@ -636,40 +603,37 @@ onUnmounted(() => {
 async function loadHistoryMessages(friendId) {
   if (!currentUser.value) return;
   try {
+    await waitForDatabase();
     const result = await getMessagesWithFriend(friendId, { limit: 50, offset: 0 });
     if (result && Array.isArray(result.messages)) {
       hybridStore.setMessages(friendId, result.messages);
-      console.log(`已从本地数据库加载与 ${friendId} 的 ${result.messages.length} 条历史消息 (共 ${result.total} 条)`);
 
       // 检查是否有阅后即焚消息，如果有则重新启动清理定时器
       const hasDestroyAfterMessages = result.messages.some(msg => msg.destroy_after && msg.destroy_after > Math.floor(Date.now() / 1000));
       if (hasDestroyAfterMessages) {
-        console.log('检测到阅后即焚消息，重新启动清理定时器');
         hybridStore.startBurnAfterCleanupTimer();
       }
     } else {
-       console.warn('getMessagesWithFriend did not return a valid result object');
+       log.warn('getMessagesWithFriend did not return a valid result object');
        hybridStore.setMessages(friendId, []); // Set empty array to avoid errors
     }
   } catch (error) {
-    console.error('从本地数据库加载历史消息失败:', error);
+    log.error('从本地数据库加载历史消息失败:', error);
     // 如果本地数据库加载失败，尝试从服务器加载
     try {
       const response = await hybridApi.getMessageHistory(friendId);
       if (response.data && response.data.messages) {
         const messages = response.data.messages || [];
         hybridStore.setMessages(friendId, messages);
-        console.log(`已从服务器加载与 ${friendId} 的 ${messages.length} 条历史消息`);
         
         // 检查是否有阅后即焚消息，如果有则重新启动清理定时器
         const hasDestroyAfterMessages = messages.some(msg => msg.destroy_after && msg.destroy_after > Math.floor(Date.now() / 1000));
         if (hasDestroyAfterMessages) {
-          console.log('检测到阅后即焚消息，重新启动清理定时器');
           hybridStore.startBurnAfterCleanupTimer();
         }
       }
     } catch (serverError) {
-      console.error('从服务器加载历史消息也失败:', serverError);
+      log.error('从服务器加载历史消息也失败:', serverError);
     }
   }
 }
@@ -772,7 +736,6 @@ async function handleMessageSent(messageData, callback) {
 
   // 根据连接状态决定发送方式
   const connectionStatus = getConnectionStatus();
-  console.log('当前连接状态:', connectionStatus);
 
   // 创建临时消息对象用于立即显示
   tempMessage = {
@@ -787,7 +750,6 @@ async function handleMessageSent(messageData, callback) {
   };
   
   try {
-    console.log('开始发送消息:', messageData);
     
     // 处理文件消息
     if (messageData.type === 'file') {
@@ -838,7 +800,6 @@ async function handleMessageSent(messageData, callback) {
     
     // 立即添加到本地显示
     hybridStore.addMessage(contact.value.id, tempMessage);
-    console.log('已添加临时消息到store:', tempMessage);
     
     // 滚动到底部
     await nextTick();
@@ -850,7 +811,6 @@ async function handleMessageSent(messageData, callback) {
       options.burnAfter = messageData.burnAfter;
     }
     const result = await hybridMessaging.sendMessage(contact.value.id, messageData.content, options);
-    console.log('消息发送结果:', result);
     
     if (result.success) {
       // 更新消息状态
@@ -872,7 +832,6 @@ async function handleMessageSent(messageData, callback) {
       
       // 注意：消息存储到数据库由HybridMessaging服务自动处理，这里不需要重复存储
       
-      console.log('消息发送成功，已更新状态');
       const successResult = { success: true, method: finalMessage.method };
       if (callback) callback(successResult);
       return successResult;
@@ -883,13 +842,13 @@ async function handleMessageSent(messageData, callback) {
       if (messageIndex !== -1) {
         messages.splice(messageIndex, 1);
       }
-      console.error('发送消息失败:', result.error || '发送失败');
+      log.error('发送消息失败:', result.error || '发送失败');
       const errorResult = { success: false, error: result.error || '发送失败' };
       if (callback) callback(errorResult);
       return errorResult;
     }
   } catch (error) {
-    console.error('发送消息失败:', error);
+    log.error('发送消息失败:', error);
     // 发送失败，移除临时消息（如果存在）
     if (tempMessage) {
       const messages = hybridStore.getMessages(contact.value.id);
@@ -948,7 +907,7 @@ async function handleFileSent(messageData) {
       try {
         await localMessageService.sendMessage(finalMessage);
       } catch (dbError) {
-        console.warn('保存文件消息到本地数据库失败:', dbError);
+        log.warn('保存文件消息到本地数据库失败:', dbError);
       }
 
       return { success: true, method: finalMessage.method };
@@ -990,11 +949,9 @@ async function handleImageSent(messageData) {
   };
   
   try {
-    console.log('开始发送图片:', messageData);
     
     // 立即添加到本地显示
     hybridStore.addMessage(contact.value.id, tempMessage);
-    console.log('已添加临时图片消息到store:', tempMessage);
     
     // 滚动到底部
     await nextTick();
@@ -1003,7 +960,6 @@ async function handleImageSent(messageData) {
     // 上传图片到服务器
     const response = await hybridApi.uploadImage(messageData.file);
     const result = response.data;
-    console.log('图片上传结果:', result);
     
     // 后端直接返回Message对象，不是包装在success字段中
     if (result && result.id) {
@@ -1043,12 +999,10 @@ async function handleImageSent(messageData) {
           encrypted: finalMessage.encrypted || false,
           timestamp: finalMessage.timestamp
         });
-        console.log('图片消息已保存到本地数据库');
       } catch (dbError) {
-        console.warn('保存图片消息到本地数据库失败:', dbError);
+        log.warn('保存图片消息到本地数据库失败:', dbError);
       }
       
-      console.log('图片消息发送成功，已更新状态');
       return { success: true, method: finalMessage.method };
     } else {
       // 发送失败，移除临时消息
@@ -1057,11 +1011,11 @@ async function handleImageSent(messageData) {
       if (messageIndex !== -1) {
         messages.splice(messageIndex, 1);
       }
-      console.error('发送图片失败: 响应格式不正确', result);
+      log.error('发送图片失败: 响应格式不正确', result);
       return { success: false, error: '发送失败：响应格式不正确' };
     }
   } catch (error) {
-    console.error('发送图片失败:', error);
+    log.error('发送图片失败:', error);
     // 发送失败，移除临时消息
     const messages = hybridStore.getMessages(contact.value.id);
     const messageIndex = messages.findIndex(m => m.id === tempMessage.id);
@@ -1094,11 +1048,9 @@ async function handleSteganographySent(messageData) {
   };
   
   try {
-    console.log('开始发送隐写术消息:', messageData);
     
     // 立即添加到本地显示
     hybridStore.addMessage(contact.value.id, tempMessage);
-    console.log('已添加临时隐写术消息到store:', tempMessage);
     
     // 滚动到底部
     await nextTick();
@@ -1134,7 +1086,7 @@ async function handleSteganographySent(messageData) {
       if (messageIndex !== -1) {
         messages.splice(messageIndex, 1);
       }
-      console.error('发送隐写术消息失败:', result?.error || '未知错误');
+      log.error('发送隐写术消息失败:', result?.error || '未知错误');
       return { success: false, error: result?.error || '发送失败' };
     }
     
@@ -1159,15 +1111,13 @@ async function handleSteganographySent(messageData) {
         encrypted: finalMessage.encrypted || false,
         timestamp: finalMessage.timestamp
       });
-      console.log('隐写术消息已保存到本地数据库');
     } catch (dbError) {
-      console.warn('保存隐写术消息到本地数据库失败:', dbError);
+      log.warn('保存隐写术消息到本地数据库失败:', dbError);
     }
     
-    console.log('隐写术消息发送成功，已更新状态');
     return { success: true, method: finalMessage.method };
   } catch (error) {
-    console.error('发送隐写术消息失败:', error);
+    log.error('发送隐写术消息失败:', error);
     // 发送失败，移除临时消息
     const messages = hybridStore.getMessages(contact.value.id);
     const messageIndex = messages.findIndex(m => m.id === tempMessage.id);
@@ -1217,12 +1167,10 @@ async function startVoiceCall() {
       return;
     }
     
-    console.log('[HybridChatWindow] 开始发起语音通话，联系人ID:', contact.value.id);
     
     // 发起语音通话
     const result = await hybridMessaging.initiateVoiceCall(contact.value.id);
     
-    console.log('[HybridChatWindow] 语音通话发起成功:', result);
     
     // 如果成功，跳转到语音通话页面
     if (result && result.success !== false) {
@@ -1231,7 +1179,7 @@ async function startVoiceCall() {
       alert(`发起语音通话失败: ${result?.error || '未知错误'}`);
     }
   } catch (error) {
-    console.error('[HybridChatWindow] 发起语音通话失败:', error);
+    log.error('发起语音通话失败:', error);
     
     // 根据错误类型提供更具体的错误信息
     let errorMessage = '发起语音通话失败';
@@ -1263,12 +1211,10 @@ async function startVideoCall() {
       return;
     }
     
-    console.log('[HybridChatWindow] 开始发起视频通话，联系人ID:', contact.value.id);
     
     // 发起视频通话
     const result = await hybridMessaging.initiateVideoCall(contact.value.id);
     
-    console.log('[HybridChatWindow] 视频通话发起成功:', result);
     
     // 如果成功，跳转到视频通话页面
     if (result && result.success !== false) {
@@ -1277,7 +1223,7 @@ async function startVideoCall() {
       alert(`发起视频通话失败: ${result?.error || '未知错误'}`);
     }
   } catch (error) {
-    console.error('[HybridChatWindow] 发起视频通话失败:', error);
+    log.error('发起视频通话失败:', error);
     
     // 根据错误类型提供更具体的错误信息
     let errorMessage = '发起视频通话失败';
@@ -1309,7 +1255,7 @@ function resetVoiceCallState() {
       alert('通话状态已重置');
     }
   } catch (error) {
-    console.error('重置通话状态失败:', error);
+    log.error('重置通话状态失败:', error);
     alert(`重置失败: ${error.message}`);
   }
 }
@@ -1350,7 +1296,6 @@ async function loadLocalHistory(append = false) {
     };
     
     const result = await getMessagesWithFriend(contact.value.id, options);
-    console.log('本地历史记录响应:', result);
     
     if (append) {
       // 追加到现有消息
@@ -1372,7 +1317,7 @@ async function loadLocalHistory(append = false) {
     filterMessages();
     
   } catch (error) {
-    console.error('加载本地历史记录失败:', error);
+    log.error('加载本地历史记录失败:', error);
     if (!append) {
       historyMessages.value = [];
       filteredHistoryMessages.value = [];
@@ -1418,7 +1363,6 @@ async function performSearch() {
     };
     
     const result = await getMessagesWithFriend(contact.value.id, options);
-    console.log('搜索历史记录响应:', result);
     
     // 替换现有消息
     historyMessages.value = result.messages;
@@ -1435,7 +1379,7 @@ async function performSearch() {
     filteredHistoryMessages.value = historyMessages.value;
     
   } catch (error) {
-    console.error('搜索历史记录失败:', error);
+    log.error('搜索历史记录失败:', error);
     historyMessages.value = [];
     filteredHistoryMessages.value = [];
   } finally {
@@ -1478,7 +1422,7 @@ function handleHistoryScroll() {
 
 // 处理图片加载错误
 function handleImageError(event) {
-  console.error('图片加载失败:', event.target.src);
+  log.error('图片加载失败:', event.target.src);
   event.target.style.display = 'none';
 }
 
@@ -1531,7 +1475,6 @@ async function handleCopyImage() {
 
   try {
     const imageUrl = getImageUrl(currentLongPressMessage.value.filePath);
-    console.log('开始复制图片到剪贴板:', imageUrl);
     
     // 检查浏览器是否支持剪贴板API
     if (!navigator.clipboard || !navigator.clipboard.write) {
@@ -1545,7 +1488,6 @@ async function handleCopyImage() {
     }
     
     const blob = await response.blob();
-    console.log('图片blob获取成功，大小:', blob.size, '类型:', blob.type);
     
     // 定义剪贴板支持的图片格式
     const supportedTypes = ['image/png'];
@@ -1554,7 +1496,6 @@ async function handleCopyImage() {
     
     // 如果不是PNG格式，直接转换为PNG
     if (mimeType !== 'image/png') {
-      console.log('检测到非PNG格式:', mimeType, '，转换为PNG格式');
       
       try {
         // 创建一个临时的Image对象
@@ -1594,20 +1535,18 @@ async function handleCopyImage() {
         });
         
         mimeType = 'image/png';
-        console.log('图片格式转换成功，新类型:', mimeType, '新大小:', finalBlob.size);
         
         // 清理blob URL
         URL.revokeObjectURL(img.src);
         
       } catch (conversionError) {
-        console.warn('图片格式转换失败:', conversionError);
+        log.warn('图片格式转换失败:', conversionError);
         
         // 如果转换失败，尝试直接使用原始blob，但强制设置为PNG类型
         if (blob.type.startsWith('image/')) {
           // 创建一个新的blob，强制设置为PNG类型
           finalBlob = new Blob([blob], { type: 'image/png' });
           mimeType = 'image/png';
-          console.log('使用原始数据但设置为PNG类型');
         } else {
           throw new Error('无法处理的图片格式');
         }
@@ -1622,13 +1561,12 @@ async function handleCopyImage() {
     // 写入剪贴板
     await navigator.clipboard.write([clipboardItem]);
     
-    console.log('图片已成功复制到剪贴板，格式: PNG');
     
     // 显示成功提示
     showSuccessToast('图片已复制到剪贴板，可使用 Cmd+V 粘贴');
     
   } catch (error) {
-    console.error('复制图片失败:', error);
+    log.error('复制图片失败:', error);
     
     // 显示错误提示
     let errorMessage = '复制图片失败';
@@ -1662,7 +1600,6 @@ async function handleSaveImage() {
     const message = currentLongPressMessage.value;
     const imageUrl = getImageUrl(message.filePath);
     
-    console.log('开始保存图片:', imageUrl);
     
     // 显示保存开始提示
     showSuccessToast('正在保存图片...');
@@ -1674,7 +1611,6 @@ async function handleSaveImage() {
     }
     
     const blob = await response.blob();
-    console.log('图片数据获取成功，大小:', blob.size, '类型:', blob.type);
     
     // 生成合适的文件名
     let fileName = message.fileName || 'image';
@@ -1722,13 +1658,12 @@ async function handleSaveImage() {
       URL.revokeObjectURL(blobUrl);
     }, 100);
     
-    console.log('图片保存成功:', finalFileName);
     
     // 显示成功提示
     showSuccessToast(`图片已保存: ${finalFileName}`);
     
   } catch (error) {
-    console.error('保存图片失败:', error);
+    log.error('保存图片失败:', error);
     
     // 显示错误提示
     let errorMessage = '保存图片失败';
@@ -1754,7 +1689,6 @@ function handleDecryptImage() {
     
     // 检查是否为图片消息或隐写术消息
     if (message.messageType !== 'image' && message.messageType !== 'steganography') {
-      console.log('非图片消息，无法解密');
       showImageContextMenu.value = false;
       return;
     }
@@ -1790,12 +1724,10 @@ async function handleHideDecryptResult() {
           field_value: 'true'
         })
       });
-      console.log('收回解密状态已保存到数据库');
     } catch (error) {
-      console.warn('保存收回解密状态失败:', error);
+      log.warn('保存收回解密状态失败:', error);
     }
     
-    console.log('已收回解密信息，解密结果已隐藏');
   }
   showImageContextMenu.value = false;
 }
@@ -1845,7 +1777,7 @@ async function extractHiddenMessage(message) {
   // 每次都重新解密，不检查之前的结果
   
   if (!message.filePath) {
-    console.error('无法提取隐藏信息：缺少图片文件路径');
+    log.error('无法提取隐藏信息：缺少图片文件路径');
     message.extractedText = '解密失败：缺少图片文件路径';
     return;
   }
@@ -1853,7 +1785,6 @@ async function extractHiddenMessage(message) {
   try {
     // 获取图片文件
     const imageUrl = getImageUrl(message.filePath);
-    console.log('尝试获取图片:', imageUrl);
     const response = await fetch(imageUrl);
     
     if (!response.ok) {
@@ -1868,7 +1799,6 @@ async function extractHiddenMessage(message) {
     formData.append('password', 'default_password'); // 使用默认密码
     
     // 调用隐写术提取API
-    console.log('调用隐写术API提取隐藏信息...');
     const API_BASE_URL = '/api';
         const extractResponse = await fetch(`${API_BASE_URL}/steganography/extract`, {
       method: 'POST',
@@ -1877,7 +1807,7 @@ async function extractHiddenMessage(message) {
     
     if (!extractResponse.ok) {
       const errorText = await extractResponse.text();
-      console.error('API错误:', errorText);
+      log.error('API错误:', errorText);
       throw new Error(`提取隐藏信息失败 (${extractResponse.status})`);
     }
     
@@ -1886,7 +1816,6 @@ async function extractHiddenMessage(message) {
     if (result.secret_message) {
       // 更新消息对象，添加提取的文本
       message.extractedText = result.secret_message;
-      console.log('成功提取隐藏信息:', result.secret_message);
       
       // 同时更新hiddenMessage字段，确保下次能正确识别
       message.hiddenMessage = true;
@@ -1908,33 +1837,29 @@ async function extractHiddenMessage(message) {
             field_value: 'false'
           })
         });
-        console.log('已清除收回解密状态');
       } catch (error) {
-        console.warn('清除收回解密状态失败:', error);
+        log.warn('清除收回解密状态失败:', error);
       }
       
       // 解密结果只保存在内存中，不持久化到数据库
-      console.log('解密信息已提取，仅保存在内存中');
     } else {
       // 如果API返回成功但没有找到隐藏信息
       message.extractedText = '此消息无加密内容';
-      console.log('API返回成功但未找到隐藏信息');
     }
     
   } catch (error) {
-     console.error('提取隐藏信息失败:', error);
+     log.error('提取隐藏信息失败:', error);
      // 设置解密失败的提示信息
      message.extractedText = '解密失败：' + error.message;
      
      // 解密失败信息只保存在内存中，不持久化到数据库
-     console.log('解密失败信息仅保存在内存中');
    }
  }
 
 // 修复图片路径处理 - 修正API路径
 function getImageUrl(filePath) {
   if (!filePath) {
-    console.warn('getImageUrl: filePath为空');
+    log.warn('getImageUrl: filePath为空');
     return '';
   }
   
@@ -1959,13 +1884,11 @@ function getImageUrl(filePath) {
 function openImageModal(message) {
   currentImageMessage.value = message;
   showImageModal.value = true;
-  console.log('打开图片放大模态框:', message);
 }
 
 function closeImageModal() {
   showImageModal.value = false;
   currentImageMessage.value = null;
-  console.log('关闭图片放大模态框');
 }
 
 function formatFileSize(bytes) {
@@ -1996,31 +1919,21 @@ function getAvatarUrl(avatarPath) {
 }
 
 function downloadFile(message) {
-  console.log('=== 文件下载调试信息 ===');
-  console.log('消息对象:', message);
-  console.log('filePath:', message.filePath);
-  console.log('file_path:', message.file_path);
-  console.log('fileName:', message.fileName);
-  console.log('file_name:', message.file_name);
-  console.log('messageType:', message.messageType);
   
   // 兼容性处理：支持多种字段格式
   const filePath = message.filePath || message.file_path;
   const fileName = message.fileName || message.file_name || 'download';
   
   if (!filePath) {
-    console.error('文件路径为空，无法下载文件');
+    log.error('文件路径为空，无法下载文件');
     alert('文件路径为空，无法下载文件。请检查文件是否正确上传。');
     return;
   }
   
-  console.log('使用的文件路径:', filePath);
-  console.log('使用的文件名:', fileName);
   
   const API_BASE_URL = '/api/v1';
   const url = `${API_BASE_URL}/files/${filePath}`;
   
-  console.log('下载URL:', url);
   
   const link = document.createElement('a');
   link.href = url;
@@ -2029,7 +1942,6 @@ function downloadFile(message) {
   link.click();
   document.body.removeChild(link);
   
-  console.log('=== 文件下载调试信息结束 ===');
 }
 
 // Toast提示函数
@@ -2080,34 +1992,18 @@ function hideToast() {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: linear-gradient(135deg, #f8f9ff 0%, #e8f4fd 50%, #f0f8ff 100%);
+  background: var(--whisper-surface-bright);
   position: relative;
 }
 
-.hybrid-chat-window::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: 
-    radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.1) 0%, transparent 50%),
-    radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.1) 0%, transparent 50%),
-    radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.1) 0%, transparent 50%);
-  pointer-events: none;
-  z-index: 0;
-}
-
 .chat-header {
+  height: var(--whisper-chatheader-height);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.5rem;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 255, 0.95) 100%);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(220, 230, 255, 0.5);
-  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.05);
+  padding: 0 var(--whisper-lg);
+  background: var(--whisper-surface-bright);
+  border-bottom: 1px solid var(--whisper-outline-variant);
   position: relative;
   z-index: 1;
 }
@@ -2115,209 +2011,104 @@ function hideToast() {
 .contact-info {
   display: flex;
   align-items: center;
+  gap: var(--whisper-sm);
 }
 
 .contact-avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--whisper-radius-full);
   overflow: hidden;
-  margin-right: 1.2rem;
-  position: relative;
-  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.2);
-  border: 3px solid rgba(255, 255, 255, 0.8);
-  transition: all 0.3s ease;
-}
-
-.contact-avatar:hover {
-  transform: scale(1.05);
-  box-shadow: 0 6px 20px rgba(0, 123, 255, 0.3);
+  flex-shrink: 0;
 }
 
 .contact-avatar .avatar-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 50%;
-  transition: transform 0.3s ease;
-}
-
-.contact-avatar:hover .avatar-image {
-  transform: scale(1.1);
+  border-radius: var(--whisper-radius-full);
 }
 
 .avatar-placeholder {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--whisper-radius-full);
+  background: var(--whisper-primary-fixed);
+  color: var(--whisper-on-primary-fixed);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: bold;
   font-size: 1.4rem;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  transition: all 0.3s ease;
-}
-
-.avatar-placeholder:hover {
-  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
 }
 
 .contact-details h3 {
-  margin: 0 0 0.4rem 0;
-  font-size: 1.3rem;
-  font-weight: 600;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin: 0 0 2px 0;
+  font-size: var(--whisper-fs-body-lg);
+  font-weight: var(--whisper-fw-headline-md);
+  color: var(--whisper-on-surface);
 }
 
 .connection-info {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  font-size: 0.9rem;
-  color: #5a6c7d;
-  font-weight: 500;
+  gap: 6px;
+  font-size: var(--whisper-fs-label-md);
+  color: var(--whisper-on-surface-variant);
 }
 
 .action-buttons {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 4px;
 }
 
-.history-btn,
-.voice-call-btn,
-.reset-call-btn {
-  width: 48px;
-  height: 48px;
+.action-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--whisper-radius-full);
   border: none;
-  border-radius: 50%;
-  color: white;
-  font-size: 1.3rem;
+  background: transparent;
+  color: var(--whisper-on-surface-variant);
   cursor: pointer;
-  transition: all 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  transition: background 0.15s, color 0.15s;
 }
 
-.history-btn::before,
-.voice-call-btn::before,
-.reset-call-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-  transition: left 0.5s;
+.action-btn:hover:not(:disabled) {
+  background: var(--whisper-surface-variant);
+  color: var(--whisper-primary);
 }
 
-.history-btn:hover::before,
-.voice-call-btn:hover:not(:disabled)::before,
-.reset-call-btn:hover::before {
-  left: 100%;
-}
-
-.history-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.history-btn:hover {
-  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
-  transform: scale(1.1) rotate(5deg);
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
-}
-
-.voice-call-btn {
-  background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
-}
-
-.voice-call-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #a8e6cf 0%, #56ab2f 100%);
-  transform: scale(1.1) rotate(-5deg);
-  box-shadow: 0 6px 20px rgba(86, 171, 47, 0.4);
-}
-
-.voice-call-btn:disabled {
-  background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+.action-btn:disabled {
+  opacity: 0.3;
   cursor: not-allowed;
-  opacity: 0.6;
-  transform: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.reset-call-btn {
-  background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
-}
-
-.reset-call-btn:hover {
-  background: linear-gradient(135deg, #fecfef 0%, #ff9a9e 100%);
-  transform: scale(1.1) rotate(5deg);
-  box-shadow: 0 6px 20px rgba(255, 154, 158, 0.4);
 }
 
 .status-indicator {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  position: relative;
-  box-shadow: 0 0 8px rgba(40, 167, 69, 0.4);
+  background: var(--whisper-outline);
 }
 
 .status-indicator.online {
-  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-  animation: statusPulse 2s infinite;
-}
-
-.status-indicator.online::after {
-  content: '';
-  position: absolute;
-  top: -2px;
-  left: -2px;
-  right: -2px;
-  bottom: -2px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-  opacity: 0.3;
-  animation: statusRipple 2s infinite;
-}
-
-@keyframes statusPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-}
-
-@keyframes statusRipple {
-  0% { transform: scale(1); opacity: 0.3; }
-  100% { transform: scale(1.5); opacity: 0; }
+  background: var(--whisper-online, #4caf50);
 }
 
 .status-text {
-  font-weight: 600;
-  color: #28a745;
+  font-size: var(--whisper-fs-label-md);
+  color: var(--whisper-on-surface-variant);
 }
 
 .connection-method {
-  padding: 0.2rem 0.6rem;
-  border-radius: 12px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  background: linear-gradient(135deg, rgba(0, 123, 255, 0.1) 0%, rgba(102, 126, 234, 0.1) 100%);
-  color: #667eea;
-  border: 1px solid rgba(102, 126, 234, 0.2);
-  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: var(--whisper-radius-full);
+  font-size: var(--whisper-fs-label-md);
+  background: rgba(186, 202, 201, 0.12);
+  color: var(--whisper-primary);
 }
 
 .no-contact {
@@ -2359,31 +2150,22 @@ function hideToast() {
 }
 
 .message-content {
-  max-width: 75%;
-  padding: 1rem 1.25rem;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  max-width: 70%;
+  padding: 0.75rem 1rem;
+  border-radius: 1.5rem;
+  background: var(--whisper-bubble-incoming);
+  border: 1px solid rgba(0, 0, 0, 0.05);
   position: relative;
-  transition: all 0.3s ease;
-}
-
-.message-content:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
-}
-
-.message.sent .message-content {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .message.received .message-content {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 255, 0.95) 100%);
-  border: 1px solid rgba(102, 126, 234, 0.1);
+  border-bottom-left-radius: 0.25rem;
+}
+
+.message.sent .message-content {
+  background: var(--whisper-bubble-outgoing);
+  color: var(--whisper-on-surface);
+  border-bottom-right-radius: 0.25rem;
 }
 
 .message-text {
@@ -2465,13 +2247,13 @@ function hideToast() {
   align-items: center;
   gap: 1rem;
   padding: 1rem;
-  background: #f1f3f4;
+  background: var(--whisper-surface-container);
   border-radius: 8px;
   max-width: 300px;
 }
 
 .message.sent .file-content {
-  background: #e0efff;
+  background: var(--whisper-surface-container-high);
 }
 
 .file-icon .icon {
@@ -2734,11 +2516,9 @@ function hideToast() {
 }
 
 .message-input-area {
-  padding: 1.5rem;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 255, 0.95) 100%);
-  backdrop-filter: blur(10px);
-  border-top: 1px solid rgba(220, 230, 255, 0.5);
-  box-shadow: 0 -2px 20px rgba(0, 0, 0, 0.05);
+  padding: var(--whisper-md);
+  background: var(--whisper-surface-bright);
+  border-top: 1px solid var(--whisper-outline-variant);
   position: relative;
   z-index: 1;
 }

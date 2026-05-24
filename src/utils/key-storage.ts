@@ -3,6 +3,9 @@
  * 用于管理用户的加密密钥
  */
 
+import { createLogger } from './logger'
+const log = createLogger('KeyStorage')
+
 // 密钥存储的键名前缀
 const KEY_PREFIX = 'whisper_key_';
 
@@ -16,7 +19,7 @@ export function getLocalKey(keyId) {
     const key = localStorage.getItem(KEY_PREFIX + keyId);
     return key;
   } catch (error) {
-    console.error('获取本地密钥失败:', error);
+    log.error('获取本地密钥失败:', error);
     return null;
   }
 }
@@ -32,7 +35,7 @@ export function saveLocalKey(keyId, keyData) {
     localStorage.setItem(KEY_PREFIX + keyId, keyData);
     return true;
   } catch (error) {
-    console.error('保存本地密钥失败:', error);
+    log.error('保存本地密钥失败:', error);
     return false;
   }
 }
@@ -47,7 +50,7 @@ export function deleteLocalKey(keyId) {
     localStorage.removeItem(KEY_PREFIX + keyId);
     return true;
   } catch (error) {
-    console.error('删除本地密钥失败:', error);
+    log.error('删除本地密钥失败:', error);
     return false;
   }
 }
@@ -67,7 +70,7 @@ export function getAllLocalKeyIds() {
     }
     return keys;
   } catch (error) {
-    console.error('获取本地密钥列表失败:', error);
+    log.error('获取本地密钥列表失败:', error);
     return [];
   }
 }
@@ -92,7 +95,7 @@ export function clearAllLocalKeys() {
     
     return true;
   } catch (error) {
-    console.error('清空本地密钥失败:', error);
+    log.error('清空本地密钥失败:', error);
     return false;
   }
 }

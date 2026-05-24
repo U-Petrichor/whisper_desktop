@@ -81,6 +81,8 @@
 
 <script setup>
 import { ref, nextTick, computed } from 'vue';
+import { createLogger } from '../utils/logger';
+const log = createLogger('MessageInput');
 
 const props = defineProps({ contact: Object });
 const emit = defineEmits(['send']);
@@ -133,22 +135,18 @@ function getSendButtonText() {
 // 事件处理
 function onImageHideModeChange() {
   if (imageHideMode.value) {
-    console.log('启用图像隐藏模式');
     // 图像隐藏和阅后即焚互斥
     if (burnMode.value) {
       burnMode.value = false;
-      console.log('已自动关闭阅后即焚模式');
     }
   }
 }
 
 function onBurnModeChange() {
   if (burnMode.value) {
-    console.log('启用阅后即焚模式');
     // 图像隐藏和阅后即焚互斥
     if (imageHideMode.value) {
       imageHideMode.value = false;
-      console.log('已自动关闭图像隐藏模式');
     }
   }
 }
@@ -243,7 +241,7 @@ async function handleImageSelect(event) {
       alert('隐写术处理失败，请重试');
     }
   } catch (error) {
-    console.error('隐写术处理错误:', error);
+    log.error('隐写术处理错误:', error);
     alert('隐写术处理出错，请重试');
   }
 }

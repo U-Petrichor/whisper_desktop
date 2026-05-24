@@ -115,6 +115,8 @@
 
 <script>
 import axios from 'axios'
+import { createLogger } from '../utils/logger'
+const log = createLogger('SteganographyPanel')
 
 export default {
   name: 'SteganographyPanel',
@@ -185,7 +187,7 @@ export default {
         this.showStatus('信息嵌入成功！图像已下载', 'success')
         this.resetEmbedForm()
       } catch (error) {
-        console.error('嵌入失败:', error)
+        log.error('嵌入失败:', error)
         this.showStatus('嵌入失败: ' + (error.response?.data?.detail || error.message), 'error')
       } finally {
         this.isLoading = false
@@ -216,7 +218,7 @@ export default {
         this.extractedMessage = response.data.secret_message
         this.showStatus('信息提取成功！', 'success')
       } catch (error) {
-        console.error('提取失败:', error)
+        log.error('提取失败:', error)
         this.showStatus('提取失败: ' + (error.response?.data?.detail || error.message), 'error')
         this.extractedMessage = ''
       } finally {

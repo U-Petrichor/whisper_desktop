@@ -1,117 +1,97 @@
 ﻿<template>
   <div class="hybrid-chat-main">
-    <!-- 顶部导航栏 -->
-    <div class="top-navbar">
-      <div class="nav-left">
-        <h1 class="app-title">Whisper</h1>
-        <div class="architecture-indicator">
-          <span class="arch-badge">混合架构</span>
-          <span class="p2p-status">
-            P2P: {{ connectionStats.p2pConnections }}/{{ totalOnlineContacts }}
-          </span>
-        </div>
-      </div>
-      
-      <div class="nav-center">
-        <!-- 连接方式切换提示 -->
-        <div v-if="showMethodSwitchHint" class="method-switch-hint">
-          <span class="hint-icon">🔄</span>
-          <span>智能切换连接方式中...</span>
-        </div>
-      </div>
-      
-      <div class="nav-right">
-        <div class="user-info">
-          <span class="username">{{ user?.username }}</span>
-          <div class="status-indicator online"></div>
-        </div>
-        <button @click="showFriendRequestModal = true" class="friend-request-btn" :class="{ 'has-requests': pendingRequestsCount > 0 }">
-          📬
-          <span v-if="pendingRequestsCount > 0" class="request-badge">{{ pendingRequestsCount }}</span>
-        </button>
-        <button @click="showUserProfile = true" class="profile-btn" title="个人信息">
-          👤
-        </button>
-        <button @click="showStatsModal = true" class="stats-btn">📊</button>
-        <button @click="logout" class="logout-btn">退出</button>
-      </div>
-    </div>
+    <!-- Embedded Title Bar -->
+    <TitleBar variant="chat" />
 
+    <!-- Main 3-column layout -->
     <div class="chat-layout">
-      <!-- 左侧联系人列表 -->
-      <div class="contacts-sidebar">
-        <HybridContactList 
+      <!-- Column 1: Side Navigation -->
+      <SideNavBar
+        v-model="activeNavTab"
+        @show-profile="showUserProfile = true"
+      />
+
+      <!-- Column 2: Contact List / Settings -->
+      <div v-if="activeNavTab === 'messages' || activeNavTab === 'contacts'" class="contacts-column">
+        <HybridContactList
           @contact-selected="handleContactSelected"
           @show-friend-profile="showFriendProfileInfo"
           ref="contactList"
         />
       </div>
 
-      <!-- 右侧聊天区域 -->
-      <div class="chat-area">
+      <div v-if="activeNavTab === 'settings'" class="settings-column">
+        <div class="settings-inner">
+          <div class="settings-header">
+            <span class="settings-username">{{ user?.username }}</span>
+            <button @click="showStatsModal = true" class="settings-action" title="统计信息">
+              <span class="material-symbols-outlined">analytics</span>
+            </button>
+            <button @click="showFriendRequestModal = true" class="settings-action" :class="{ 'has-requests': pendingRequestsCount > 0 }" title="好友申请">
+              <span class="material-symbols-outlined">person_add</span>
+              <span v-if="pendingRequestsCount > 0" class="badge">{{ pendingRequestsCount }}</span>
+            </button>
+          </div>
+          <div class="settings-actions">
+            <button @click="logout" class="settings-logout">
+              <span class="material-symbols-outlined">logout</span>
+              <span>退出登录</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Column 3: Chat Canvas -->
+      <div class="chat-canvas">
         <div v-if="selectedContact" class="chat-content">
-          <HybridChatWindow 
+          <HybridChatWindow
             :contact="selectedContact"
             :key="selectedContact.id"
           />
         </div>
-        
-        <!-- 未选择联系人时的占位 -->
+
+        <!-- Empty state -->
         <div v-else class="empty-chat">
           <div class="empty-content">
-            <div class="empty-icon">💬</div>
+            <span class="material-symbols-outlined empty-icon">chat</span>
             <h3>选择一个联系人开始聊天</h3>
-            <p>支持P2P直连和服务器转发两种传输方式</p>
-            <div class="feature-list">
-              <div class="feature-item">
-                <span class="feature-icon">🔗</span>
-                <span>在线时自动P2P直连</span>
-              </div>
-              <div class="feature-item">
-                <span class="feature-icon">📡</span>
-                <span>离线时服务器转发</span>
-              </div>
-              <div class="feature-item">
-                <span class="feature-icon">⚡</span>
-                <span>智能切换传输方式</span>
-              </div>
-            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 统计模态框 -->
+    <!-- Stats modal -->
     <div v-if="showStatsModal" class="modal-overlay" @click="showStatsModal = false">
       <div class="stats-modal" @click.stop>
         <div class="modal-header">
           <h3>连接与消息统计</h3>
-          <button @click="showStatsModal = false" class="close-btn">×</button>
+          <button @click="showStatsModal = false" class="close-btn">
+            <span class="material-symbols-outlined">close</span>
+          </button>
         </div>
-        
+
         <div class="modal-content">
-          <!-- 连接统计 -->
           <div class="stats-section">
             <h4>连接统计</h4>
             <div class="stats-grid">
-              <div class="stat-card p2p">
-                <div class="stat-icon">🔗</div>
+              <div class="stat-card">
+                <span class="material-symbols-outlined stat-icon">link</span>
                 <div class="stat-info">
                   <div class="stat-value">{{ connectionStats.p2pConnections }}</div>
                   <div class="stat-label">P2P连接</div>
                 </div>
               </div>
-              
-              <div class="stat-card server">
-                <div class="stat-icon">📡</div>
+
+              <div class="stat-card">
+                <span class="material-symbols-outlined stat-icon">dns</span>
                 <div class="stat-info">
                   <div class="stat-value">{{ connectionStats.serverConnections }}</div>
                   <div class="stat-label">服务器转发</div>
                 </div>
               </div>
-              
-              <div class="stat-card ratio">
-                <div class="stat-icon">📈</div>
+
+              <div class="stat-card">
+                <span class="material-symbols-outlined stat-icon">trending_up</span>
                 <div class="stat-info">
                   <div class="stat-value">{{ connectionStats.p2pRatio }}%</div>
                   <div class="stat-label">P2P比例</div>
@@ -120,7 +100,6 @@
             </div>
           </div>
 
-          <!-- 消息统计 -->
           <div class="stats-section">
             <h4>消息统计</h4>
             <div class="message-stats">
@@ -132,7 +111,7 @@
                   <span class="message-server">服务器 {{ messageStats.serverSent }}</span>
                 </div>
               </div>
-              
+
               <div class="message-row">
                 <span class="message-label">接收消息:</span>
                 <div class="message-breakdown">
@@ -143,27 +122,20 @@
               </div>
             </div>
 
-            <!-- 效率比较 -->
             <div class="efficiency-chart">
               <h5>传输效率对比</h5>
               <div class="chart-bar">
                 <div class="bar-label">P2P传输</div>
                 <div class="bar-container">
-                  <div 
-                    class="bar-fill p2p" 
-                    :style="{ width: p2pEfficiency + '%' }"
-                  ></div>
+                  <div class="bar-fill p2p" :style="{ width: p2pEfficiency + '%' }"></div>
                 </div>
                 <div class="bar-value">{{ p2pEfficiency }}%</div>
               </div>
-              
+
               <div class="chart-bar">
                 <div class="bar-label">服务器转发</div>
                 <div class="bar-container">
-                  <div 
-                    class="bar-fill server" 
-                    :style="{ width: serverEfficiency + '%' }"
-                  ></div>
+                  <div class="bar-fill server" :style="{ width: serverEfficiency + '%' }"></div>
                 </div>
                 <div class="bar-value">{{ serverEfficiency }}%</div>
               </div>
@@ -173,14 +145,14 @@
       </div>
     </div>
 
-    <!-- 好友申请模态框 -->
-    <FriendRequestModal 
+    <!-- Friend request modal -->
+    <FriendRequestModal
       :isVisible="showFriendRequestModal"
       @close="showFriendRequestModal = false"
       @request-handled="handleFriendRequestHandled"
     />
 
-    <!-- 连接状态悬浮通知 -->
+    <!-- Connection status notification -->
     <div v-if="connectionNotification" class="connection-notification">
       <div :class="['notification', connectionNotification.type]">
         <span class="notification-icon">{{ connectionNotification.icon }}</span>
@@ -188,7 +160,7 @@
       </div>
     </div>
 
-    <!-- 来电通知模态框 -->
+    <!-- Incoming call modal -->
     <div v-if="incomingCall" class="modal-overlay incoming-call-overlay">
       <div class="incoming-call-modal">
         <div class="caller-info">
@@ -208,9 +180,9 @@
       </div>
     </div>
 
-    <!-- 用户个人信息面板 -->
-    <UserProfile 
-      v-if="showUserProfile || showFriendProfile" 
+    <!-- User profile panel -->
+    <UserProfile
+      v-if="showUserProfile || showFriendProfile"
       :userId="friendProfileUserId"
       @close="closeProfile"
     />
@@ -221,23 +193,30 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { hybridStore } from '../store/hybrid-store';
+import TitleBar from '../components/TitleBar.vue';
+import SideNavBar from '../components/SideNavBar.vue';
 import HybridContactList from '../components/hybridcontactlist.vue';
 import HybridChatWindow from '../components/hybridchatwindow.vue';
 import FriendRequestModal from '../components/FriendRequestModal.vue';
 import UserProfile from '../components/UserProfile.vue';
+import { transitionToLoginWindow } from '../utils/window-manager';
 import HybridMessaging from '../services/hybridmessaging';
 import { hybridApi } from '../api/hybrid-api.ts';
 import { extractPaginatedItems } from '../utils/api-contract.ts';
+import { getMessagesWithFriend } from '@/client_db/database';
+import { createLogger } from '@/utils/logger.ts';
+
+const log = createLogger('HybridChatMain');
 
 const router = useRouter();
 
+const activeNavTab = ref('messages');
 const selectedContact = ref(null);
 const showStatsModal = ref(false);
 const showFriendRequestModal = ref(false);
 const showUserProfile = ref(false);
 const showFriendProfile = ref(false);
 const friendProfileUserId = ref(null);
-const showMethodSwitchHint = ref(false);
 const connectionNotification = ref(null);
 const contactList = ref(null);
 const messaging = ref(null);
@@ -248,12 +227,6 @@ const incomingCall = ref(null);
 const user = computed(() => hybridStore.user);
 const connectionStats = computed(() => hybridStore.getConnectionStats());
 const messageStats = computed(() => hybridStore.messageStats);
-
-const totalOnlineContacts = computed(() => {
-  return hybridStore.contacts.filter(contact => 
-    hybridStore.onlineUsers.has(contact.id)
-  ).length;
-});
 
 const p2pEfficiency = computed(() => {
   const total = messageStats.value.totalSent + messageStats.value.totalReceived;
@@ -279,7 +252,7 @@ onMounted(async () => {
   if (!isDevMode) {
     // 只在非开发模式下检查登录状态
     if (!hybridStore.isLoggedIn) {
-      console.warn('用户未登录，跳转到登录页面');
+      log.warn('用户未登录，跳转到登录页面');
       router.push('/login');
       return;
     }
@@ -291,13 +264,12 @@ onMounted(async () => {
   
   while (retryCount < maxRetries) {
     if (hybridStore.user && hybridStore.user.id) {
-      console.log('用户信息加载成功，开始初始化消息系统');
       await initializeMessaging();
       break;
     }
     
     retryCount++;
-    console.warn(`用户信息未加载，重试 ${retryCount}/${maxRetries}`);
+    log.warn(`用户信息未加载，重试 ${retryCount}/${maxRetries}`);
     
     if (retryCount < maxRetries) {
       // 等待一段时间后重试
@@ -307,7 +279,7 @@ onMounted(async () => {
       await nextTick();
     } else {
       // 最后一次重试失败，跳转到登录页面
-      console.error('用户信息加载失败，跳转到登录页面');
+      log.error('用户信息加载失败，跳转到登录页面');
       router.push('/login');
       return;
     }
@@ -337,42 +309,35 @@ onUnmounted(() => {
       window.hybridChatTimers = [];
     }
   } catch (error) {
-    console.error('组件卸载时出错:', error);
+    log.error('组件卸载时出错:', error);
   }
 });
 
 // 方法
 function handleIncomingCall(callInfo) {
-  console.log('[来电处理] 收到语音来电信息:', callInfo);
   const caller = hybridStore.getContact(callInfo.fromUserId);
-  console.log('[来电处理] 查找到的联系人信息:', caller);
-  console.log('[来电处理] 所有联系人列表:', hybridStore.getContacts());
   if (caller) {
     incomingCall.value = {
       ...callInfo,
       caller: caller,
       callType: 'voice'
     };
-    console.log('[来电处理] 语音来电信息已设置，将显示来电界面:', incomingCall.value);
   } else {
-    console.warn(`收到未知联系人 ${callInfo.fromUserId} 的语音来电`);
-    console.warn('[来电处理] 尝试通过用户ID查找联系人失败，fromUserId类型:', typeof callInfo.fromUserId);
+    log.warn(`收到未知联系人 ${callInfo.fromUserId} 的语音来电`);
+    log.warn('尝试通过用户ID查找联系人失败，fromUserId类型:', typeof callInfo.fromUserId);
   }
 }
 
 function handleIncomingVideoCall(callInfo) {
-  console.log('[视频来电处理] 收到视频来电信息:', callInfo);
   const caller = hybridStore.getContact(callInfo.fromUserId);
-  console.log('[视频来电处理] 查找到的联系人信息:', caller);
   if (caller) {
     incomingCall.value = {
       ...callInfo,
       caller: caller,
       callType: 'video'
     };
-    console.log('[视频来电处理] 视频来电信息已设置，将显示来电界面:', incomingCall.value);
   } else {
-    console.warn(`收到未知联系人 ${callInfo.fromUserId} 的视频来电`);
+    log.warn(`收到未知联系人 ${callInfo.fromUserId} 的视频来电`);
   }
 }
 
@@ -383,35 +348,31 @@ async function acceptCall() {
     const callType = incomingCall.value.callType || 'voice';
     
     try {
-      console.log(`[接听通话] 开始接听来自用户 ${contactId} 的${callType === 'video' ? '视频' : '语音'}通话`);
-      
+
       // 先设置通话信息到store
       hybridStore.setCurrentCall(callInfo);
-      
+
       if (callType === 'video') {
         // 接听视频通话
         const result = await messaging.value.acceptVideoCall(contactId, callInfo.offer, callInfo.encryptionKey);
-        console.log('[接听视频通话] 通话接听成功:', result);
-        
+
         // 跳转到视频通话页面
         router.push(`/video-call/${contactId}`);
       } else {
         // 接听语音通话
         const result = await messaging.value.acceptVoiceCall(contactId, callInfo.offer);
-        console.log('[接听语音通话] 通话接听成功:', result);
-        
+
         // 跳转到语音通话页面
         router.push(`/voice-call/${contactId}`);
       }
-      
+
       // 延迟清理来电状态，确保通话页面能够正确识别通话状态
       setTimeout(() => {
         incomingCall.value = null;
-        console.log('[接听通话] 延迟清理来电状态完成');
       }, 1000);
-      
+
     } catch (error) {
-      console.error('[接听通话] 接听失败:', error);
+      log.error('接听失败:', error);
       
       // 接听失败时清理状态
       incomingCall.value = null;
@@ -431,13 +392,11 @@ async function rejectCall() {
     try {
       if (callType === 'video') {
         await messaging.value.rejectVideoCall(contactId);
-        console.log('[拒绝视频通话] 已拒绝来自用户', contactId, '的视频通话');
       } else {
         await messaging.value.rejectVoiceCall(contactId);
-        console.log('[拒绝语音通话] 已拒绝来自用户', contactId, '的语音通话');
       }
     } catch (error) {
-      console.error('[拒绝通话] 拒绝通话失败:', error);
+      log.error('拒绝通话失败:', error);
     }
     
     incomingCall.value = null;
@@ -446,12 +405,10 @@ async function rejectCall() {
 
 // 处理视频通话状态变化
 function handleVideoCallStatusChange(event) {
-  console.log('[视频通话状态] 状态变化:', event);
-  
+
   switch (event.type) {
     case 'call_ended_remote':
     case 'call_ended_local':
-      console.log('[视频通话状态] 通话已结束，清理来电状态');
       // 清理来电状态
       if (incomingCall.value) {
         incomingCall.value = null;
@@ -459,16 +416,14 @@ function handleVideoCallStatusChange(event) {
       // 清理当前通话信息
       hybridStore.clearCurrentCallInfo();
       break;
-      
+
     case 'call_rejected':
-      console.log('[视频通话状态] 通话被拒绝');
       if (incomingCall.value) {
         incomingCall.value = null;
       }
       break;
-      
+
     default:
-      console.log('[视频通话状态] 其他状态变化:', event.type);
       break;
   }
 }
@@ -491,7 +446,7 @@ function showFriendProfileInfo(userId) {
 // 预加载有阅后即焚消息的对话
 async function preloadBurnAfterMessages() {
   if (!hybridStore.getHybridMessaging()) {
-    console.warn('⚠️ 消息服务未就绪，无法预加载阅后即焚消息。');
+    log.warn('消息服务未就绪，无法预加载阅后即焚消息。');
     return;
   }
   
@@ -504,64 +459,58 @@ async function preloadBurnAfterMessages() {
     for (const contact of contacts) {
       try {
         const result = await getMessagesWithFriend(contact.id, { limit: 50, offset: 0 });
-        
+        const messages = result.messages || [];
+
         // 检查是否有未过期的阅后即焚消息
         const currentTime = Math.floor(Date.now() / 1000);
-        const burnAfterMessages = result.filter(msg => 
+        const burnAfterMessages = messages.filter(msg =>
           msg.destroy_after && msg.destroy_after > currentTime
         );
-        
+
         if (burnAfterMessages.length > 0) {
-          // 如果有阅后即焚消息，加载到store中
-          hybridStore.setMessages(contact.id, result);
+          hybridStore.setMessages(contact.id, messages);
           totalLoadedConversations++;
           totalBurnAfterMessages += burnAfterMessages.length;
-          console.log(`📥 预加载联系人 ${contact.id} 的对话，包含 ${burnAfterMessages.length} 条阅后即焚消息`);
         }
       } catch (error) {
-        console.warn(`⚠️ 预加载联系人 ${contact.id} 的消息失败:`, error);
+        log.warn(`预加载联系人 ${contact.id} 的消息失败:`, error);
       }
     }
     
     if (totalLoadedConversations > 0) {
-      console.log(`✅ 预加载完成：${totalLoadedConversations} 个对话，${totalBurnAfterMessages} 条阅后即焚消息`);
       // 确保清理定时器正在运行
       hybridStore.startBurnAfterCleanupTimer();
     } else {
-      console.log('ℹ️ 没有发现需要预加载的阅后即焚消息');
     }
   } catch (error) {
-    console.error('❌ 预加载阅后即焚消息失败:', error);
+    log.error('预加载阅后即焚消息失败:', error);
   }
 }
 
 // 初始化消息系统
 async function initializeMessaging() {
   if (hybridStore.getHybridMessaging()) {
-    console.log('🔄 消息系统已初始化，跳过。');
     return;
   }
-  
+
   if (!user.value?.id) {
-    console.warn('⚠️ 用户信息尚未加载，无法初始化消息系统。');
+    log.warn('用户信息尚未加载，无法初始化消息系统。');
     return;
   }
 
   try {
-    console.log('🚀 开始初始化消息系统...');
     const hybridMessaging = new HybridMessaging();
     hybridStore.setHybridMessaging(hybridMessaging);
-    
+
     // 初始化服务
     await hybridMessaging.initialize(user.value.id, hybridStore.token);
-    
-    console.log('✅ 消息系统初始化成功!');
+
 
     // 预加载阅后即焚消息
     await preloadBurnAfterMessages();
-    
+
   } catch (error) {
-    console.error('❌ 初始化消息系统失败:', error);
+    log.error('初始化消息系统失败:', error);
     // 这里可以添加更详细的用户反馈，例如显示一个错误通知
   }
 }
@@ -577,7 +526,6 @@ async function handleContactSelected(contact) {
   
   // 预连接功能已移除，直接选择联系人即可
   // P2P连接将在发送消息时自动建立
-  console.log(`[聊天窗口] 已选择联系人: ${contact.username}`);
 }
 
 function handleUserStatusChange(userId, status) {
@@ -604,7 +552,7 @@ function startStatusHeartbeat() {
       // 同时更新联系人在线状态
       await updateContactsOnlineStatus();
     } catch (error) {
-      console.error('心跳失败:', error);
+      log.error('心跳失败:', error);
     }
   }, 30000);
   
@@ -628,7 +576,7 @@ async function updateContactsOnlineStatus() {
       });
     }
   } catch (error) {
-    console.error('更新联系人在线状态失败:', error);
+    log.error('更新联系人在线状态失败:', error);
   }
 }
 
@@ -661,7 +609,7 @@ async function loadPendingRequestsCount() {
       pendingRequestsCount.value = requests.filter(req => req.status === 'pending').length;
     }
   } catch (error) {
-    console.error('加载好友申请数量失败:', error);
+    log.error('加载好友申请数量失败:', error);
   }
 }
 
@@ -679,7 +627,7 @@ async function handleFriendRequestHandled(data) {
       const contactsData = extractPaginatedItems(response);
       hybridStore.setContacts(contactsData);
     } catch (error) {
-      console.error('刷新联系人列表失败:', error);
+      log.error('刷新联系人列表失败:', error);
     }
   }
   
@@ -692,16 +640,12 @@ async function handleFriendRequestHandled(data) {
 
 async function logout() {
   try {
-    console.log('开始退出登录...');
-    
-    console.log('[状态同步] 用户退出，发送离线状态给所有好友');
-    
+
     // 1. 设置用户离线状态（这会通知所有好友）
     try {
       await hybridApi.setOnlineStatus('offline');
-      console.log('[状态同步] 离线状态已同步给好友');
     } catch (statusError) {
-      console.warn('设置离线状态失败:', statusError);
+      log.warn('设置离线状态失败:', statusError);
     }
     
     // 2. 清理HybridMessaging服务
@@ -734,24 +678,28 @@ async function logout() {
     try {
       await hybridApi.logout();
     } catch (apiError) {
-      console.warn('后端退出API调用失败:', apiError);
+      log.warn('后端退出API调用失败:', apiError);
     }
     
     // 7. 清理单点登录资源
     try {
       const { cleanupSingleLogin } = await import('../utils/single-login');
       cleanupSingleLogin();
-      console.log('[单点登录] 资源已清理');
     } catch (error) {
-      console.warn('[单点登录] 资源清理失败:', error);
+      log.warn('资源清理失败:', error);
     }
     
     // 8. 清空store状态
     hybridStore.logout();
-    
-    console.log('退出登录完成，跳转到登录页');
-    
-    // 9. 强制跳转到登录页
+
+    // 9. Transition window back to login size
+    try {
+      await transitionToLoginWindow();
+    } catch (e) {
+      log.warn('窗口尺寸转换失败:', e);
+    }
+
+    // 10. 强制跳转到登录页
     await router.replace('/login');
     
     // 10. 刷新页面确保完全清理
@@ -759,7 +707,7 @@ async function logout() {
       window.location.reload();
     }, 100);
   } catch (error) {
-    console.error('退出登录过程中发生错误:', error);
+    log.error('退出登录过程中发生错误:', error);
     // 强制清理并跳转
     hybridStore.logout();
     window.location.href = '/login';
@@ -772,185 +720,131 @@ async function logout() {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #f0f2f5;
-}
-
-.top-navbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.75rem 1rem;
-  background: white;
-  border-bottom: 1px solid #ddd;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-
-.nav-left {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.app-title {
-  margin: 0;
-  font-size: 2rem;
-  font-weight: 700;
-  font-family: 'Brush Script MT', 'Lucida Handwriting', 'Segoe Script', cursive;
-  background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #feca57, #ff9ff3);
-  background-size: 300% 300%;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: gradientShift 3s ease-in-out infinite;
-  text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-  letter-spacing: 1px;
-}
-
-.architecture-indicator {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.arch-badge {
-  background: linear-gradient(45deg, #28a745, #007bff);
-  color: white;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.p2p-status {
-  font-size: 0.875rem;
-  color: #666;
-  font-weight: 500;
-}
-
-.nav-center {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-}
-
-.method-switch-hint {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  background: #fff3cd;
-  border: 1px solid #ffeaa7;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  color: #856404;
-}
-
-.hint-icon {
-  animation: spin 1s linear infinite;
-}
-
-.nav-right {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.username {
-  font-weight: 500;
-  color: #333;
-}
-
-.status-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #28a745;
-}
-
-.friend-request-btn, .profile-btn, .stats-btn, .logout-btn {
-  padding: 0.5rem 1rem;
-  border: 1px solid #ddd;
-  background: white;
-  border-radius: 0.25rem;
-  cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
-}
-
-.friend-request-btn:hover, .profile-btn:hover, .stats-btn:hover, .logout-btn:hover {
-  background: #f8f9fa;
-}
-
-.friend-request-btn.has-requests {
-  background: #fff3cd;
-  border-color: #ffeaa7;
-  color: #856404;
-}
-
-.friend-request-btn.has-requests:hover {
-  background: #ffeaa7;
-}
-
-.request-badge {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  background: #dc3545;
-  color: white;
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
-  font-size: 0.75rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  border: 2px solid white;
-}
-
-.profile-btn {
-  color: #007bff;
-  border-color: #007bff;
-}
-
-.profile-btn:hover {
-  background: #007bff;
-  color: white;
-}
-
-.logout-btn {
-  color: #dc3545;
-  border-color: #dc3545;
-}
-
-.logout-btn:hover {
-  background: #dc3545;
-  color: white;
+  background: var(--whisper-bg);
+  color: var(--whisper-on-surface);
+  overflow: hidden;
 }
 
 .chat-layout {
   flex: 1;
   display: flex;
   overflow: hidden;
+  height: calc(100vh - var(--whisper-titlebar-height));
 }
 
-.contacts-sidebar {
-  width: 300px;
-  border-right: 1px solid #ddd;
-  background: white;
+.contacts-column {
+  width: var(--whisper-contactlist-width);
+  border-right: 1px solid var(--whisper-outline-variant);
+  flex-shrink: 0;
+  background: var(--whisper-surface-container-lowest);
 }
 
-.chat-area {
+.settings-column {
+  width: var(--whisper-contactlist-width);
+  border-right: 1px solid var(--whisper-outline-variant);
+  flex-shrink: 0;
+  background: var(--whisper-surface-container-lowest);
+}
+
+.settings-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: var(--whisper-md);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  gap: var(--whisper-sm);
+  padding-bottom: var(--whisper-md);
+  border-bottom: 1px solid var(--whisper-outline-variant);
+}
+
+.settings-username {
+  font-size: var(--whisper-fs-headline-sm);
+  font-weight: var(--whisper-fw-headline-sm);
+  color: var(--whisper-on-surface);
+  flex: 1;
+}
+
+.settings-action {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--whisper-radius-full);
+  border: none;
+  background: transparent;
+  color: var(--whisper-on-surface-variant);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: background 0.15s;
+}
+
+.settings-action:hover {
+  background: var(--whisper-surface-container-high);
+}
+
+.settings-action .material-symbols-outlined {
+  font-size: 20px;
+}
+
+.settings-action.has-requests {
+  color: var(--whisper-primary);
+}
+
+.badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  background: var(--whisper-error);
+  color: var(--whisper-on-error);
+  border-radius: var(--whisper-radius-full);
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.settings-actions {
+  margin-top: auto;
+}
+
+.settings-logout {
+  display: flex;
+  align-items: center;
+  gap: var(--whisper-sm);
+  width: 100%;
+  padding: var(--whisper-sm) var(--whisper-md);
+  border: none;
+  background: transparent;
+  color: var(--whisper-error);
+  cursor: pointer;
+  border-radius: var(--whisper-radius-default);
+  font-size: var(--whisper-fs-body-md);
+  transition: background 0.15s;
+}
+
+.settings-logout:hover {
+  background: var(--whisper-error-container);
+}
+
+.settings-logout .material-symbols-outlined {
+  font-size: 20px;
+}
+
+.chat-canvas {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #f8f9fa;
+  background: var(--whisper-surface-bright);
+  min-width: 0;
 }
 
 .chat-content {
@@ -966,55 +860,29 @@ async function logout() {
 
 .empty-content {
   text-align: center;
-  color: #666;
-  max-width: 400px;
+  color: var(--whisper-on-surface-variant);
 }
 
 .empty-icon {
-  font-size: 4rem;
-  margin-bottom: 1rem;
-  opacity: 0.5;
+  font-size: 48px;
+  color: var(--whisper-outline);
+  margin-bottom: var(--whisper-md);
 }
 
 .empty-content h3 {
-  margin: 0 0 0.5rem 0;
-  font-size: 1.5rem;
-  color: #333;
+  font-size: var(--whisper-fs-headline-sm);
+  font-weight: var(--whisper-fw-headline-sm);
+  color: var(--whisper-on-surface-variant);
 }
 
-.empty-content p {
-  margin: 0 0 2rem 0;
-  font-size: 1rem;
-}
-
-.feature-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.feature-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1rem;
-  background: white;
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-
-.feature-icon {
-  font-size: 1.5rem;
-}
-
-/* 模态框样式 */
+/* Modals */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1022,9 +890,9 @@ async function logout() {
 }
 
 .stats-modal {
-  background: white;
-  border-radius: 0.5rem;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  background: var(--whisper-surface-container-lowest);
+  border-radius: var(--whisper-radius-xl);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   width: 90%;
   max-width: 600px;
   max-height: 80vh;
@@ -1035,210 +903,201 @@ async function logout() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #eee;
+  padding: var(--whisper-md) var(--whisper-lg);
+  border-bottom: 1px solid var(--whisper-outline-variant);
 }
 
 .modal-header h3 {
-  margin: 0;
-  font-size: 1.25rem;
-  color: #333;
+  font-size: var(--whisper-fs-headline-sm);
+  font-weight: var(--whisper-fw-headline-sm);
+  color: var(--whisper-on-surface);
 }
 
 .close-btn {
   background: none;
   border: none;
-  font-size: 1.5rem;
   cursor: pointer;
-  color: #666;
-  padding: 0.25rem;
-  line-height: 1;
+  color: var(--whisper-on-surface-variant);
+  padding: var(--whisper-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-btn .material-symbols-outlined {
+  font-size: 20px;
 }
 
 .close-btn:hover {
-  color: #333;
+  color: var(--whisper-on-surface);
 }
 
 .modal-content {
-  padding: 1.5rem;
+  padding: var(--whisper-lg);
 }
 
 .stats-section {
-  margin-bottom: 2rem;
+  margin-bottom: var(--whisper-xl);
 }
 
 .stats-section h4 {
-  margin: 0 0 1rem 0;
-  font-size: 1.1rem;
-  color: #333;
+  font-size: var(--whisper-fs-body-lg);
+  font-weight: 500;
+  color: var(--whisper-on-surface);
+  margin-bottom: var(--whisper-md);
 }
 
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1rem;
+  gap: var(--whisper-md);
 }
 
 .stat-card {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 1rem;
-  border-radius: 0.5rem;
-  border: 1px solid #eee;
-}
-
-.stat-card.p2p {
-  background: linear-gradient(135deg, #d4edda, #c3e6cb);
-}
-
-.stat-card.server {
-  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
-}
-
-.stat-card.ratio {
-  background: linear-gradient(135deg, #e2e3e5, #d1ecf1);
+  gap: var(--whisper-md);
+  padding: var(--whisper-md);
+  border-radius: var(--whisper-radius-default);
+  background: var(--whisper-surface-container);
 }
 
 .stat-icon {
-  font-size: 2rem;
+  font-size: 24px;
 }
 
 .stat-value {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #333;
+  font-size: var(--whisper-fs-headline-sm);
+  font-weight: 500;
+  color: var(--whisper-on-surface);
 }
 
 .stat-label {
-  font-size: 0.875rem;
-  color: #666;
+  font-size: var(--whisper-fs-label-md);
+  color: var(--whisper-on-surface-variant);
 }
 
 .message-stats {
-  margin-bottom: 1.5rem;
+  margin-bottom: var(--whisper-lg);
 }
 
 .message-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.75rem;
-  padding: 0.75rem;
-  background: #f8f9fa;
-  border-radius: 0.25rem;
+  margin-bottom: var(--whisper-sm);
+  padding: var(--whisper-sm) var(--whisper-md);
+  background: var(--whisper-surface-container);
+  border-radius: var(--whisper-radius-default);
 }
 
 .message-label {
   font-weight: 500;
-  color: #333;
+  color: var(--whisper-on-surface);
 }
 
 .message-breakdown {
   display: flex;
-  gap: 1rem;
-  font-size: 0.875rem;
+  gap: var(--whisper-md);
+  font-size: var(--whisper-fs-label-md);
 }
 
 .message-total {
   font-weight: 500;
-  color: #333;
+  color: var(--whisper-on-surface);
 }
 
 .message-p2p {
-  color: #28a745;
+  color: var(--whisper-primary);
 }
 
 .message-server {
-  color: #ffc107;
+  color: var(--whisper-tertiary);
 }
 
 .efficiency-chart h5 {
-  margin: 0 0 1rem 0;
-  font-size: 1rem;
-  color: #333;
+  font-size: var(--whisper-fs-body-md);
+  font-weight: 500;
+  color: var(--whisper-on-surface);
+  margin-bottom: var(--whisper-md);
 }
 
 .chart-bar {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
+  gap: var(--whisper-md);
+  margin-bottom: var(--whisper-sm);
 }
 
 .bar-label {
   width: 100px;
-  font-size: 0.875rem;
-  color: #666;
+  font-size: var(--whisper-fs-label-md);
+  color: var(--whisper-on-surface-variant);
 }
 
 .bar-container {
   flex: 1;
   height: 20px;
-  background: #e9ecef;
-  border-radius: 10px;
+  background: var(--whisper-surface-container);
+  border-radius: var(--whisper-radius-full);
   overflow: hidden;
 }
 
 .bar-fill {
   height: 100%;
-  border-radius: 10px;
+  border-radius: var(--whisper-radius-full);
   transition: width 0.3s ease;
 }
 
 .bar-fill.p2p {
-  background: linear-gradient(90deg, #28a745, #20c997);
+  background: var(--whisper-primary);
 }
 
 .bar-fill.server {
-  background: linear-gradient(90deg, #ffc107, #fd7e14);
+  background: var(--whisper-tertiary);
 }
 
 .bar-value {
   width: 50px;
   text-align: right;
-  font-size: 0.875rem;
+  font-size: var(--whisper-fs-label-md);
   font-weight: 500;
-  color: #333;
+  color: var(--whisper-on-surface);
 }
 
-/* 连接通知 */
+/* Notification */
 .connection-notification {
   position: fixed;
-  top: 20px;
-  right: 20px;
+  top: var(--whisper-md);
+  right: var(--whisper-md);
   z-index: 1001;
 }
 
 .notification {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  font-size: 0.875rem;
+  gap: var(--whisper-sm);
+  padding: var(--whisper-sm) var(--whisper-md);
+  border-radius: var(--whisper-radius-md);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  font-size: var(--whisper-fs-body-md);
   font-weight: 500;
   animation: slideIn 0.3s ease-out;
 }
 
 .notification.success {
-  background: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
+  background: var(--whisper-primary-fixed);
+  color: var(--whisper-on-primary-fixed);
 }
 
 .notification.info {
-  background: #d1ecf1;
-  color: #0c5460;
-  border: 1px solid #bee5eb;
+  background: var(--whisper-surface-container-high);
+  color: var(--whisper-on-surface);
 }
 
 .notification.error {
-  background: #f8d7da;
-  color: #721c24;
-  border: 1px solid #f5c6cb;
+  background: var(--whisper-error-container);
+  color: var(--whisper-on-error-container);
 }
 
 @keyframes slideIn {
@@ -1252,45 +1111,37 @@ async function logout() {
   }
 }
 
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
+/* Incoming call */
 .modal-overlay.incoming-call-overlay {
-  background-color: rgba(0, 0, 0, 0.6);
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  background: rgba(0, 0, 0, 0.4);
   z-index: 1001;
 }
 
 .incoming-call-modal {
-  background: linear-gradient(145deg, #2c2c2c, #1a1a1a);
-  border-radius: 20px;
-  padding: 40px;
+  background: var(--whisper-inverse-surface);
+  color: var(--whisper-inverse-on-surface);
+  border-radius: var(--whisper-radius-xl);
+  padding: var(--whisper-xl);
   width: 320px;
   text-align: center;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   animation: fadeIn 0.3s ease-out;
 }
 
 .caller-info {
-  margin-bottom: 30px;
+  margin-bottom: var(--whisper-xl);
 }
 
 .caller-avatar {
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  margin: 0 auto 20px;
+  width: 80px;
+  height: 80px;
+  border-radius: var(--whisper-radius-full);
+  margin: 0 auto var(--whisper-lg);
   overflow: hidden;
-  border: 3px solid #4a90e2;
+  background: var(--whisper-primary-container);
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: #333;
 }
 
 .caller-avatar img {
@@ -1300,121 +1151,69 @@ async function logout() {
 }
 
 .avatar-placeholder {
-  font-size: 48px;
-  color: #fff;
-  font-weight: bold;
+  font-size: 32px;
+  color: var(--whisper-on-primary-container);
+  font-weight: 500;
 }
 
 .caller-name {
-  font-size: 24px;
-  font-weight: 600;
-  color: #fff;
-  margin: 0;
+  font-size: var(--whisper-fs-headline-md);
+  font-weight: 500;
+  color: var(--whisper-inverse-on-surface);
 }
 
 .call-type {
-  font-size: 16px;
-  color: #aaa;
-  margin-top: 5px;
+  font-size: var(--whisper-fs-body-md);
+  color: var(--whisper-inverse-on-surface);
+  opacity: 0.7;
+  margin-top: var(--whisper-xs);
 }
 
 .call-actions {
   display: flex;
   justify-content: space-around;
-  align-items: center;
 }
 
 .action-btn {
-  width: 70px;
-  height: 70px;
-  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  border-radius: var(--whisper-radius-full);
   border: none;
   cursor: pointer;
   color: white;
-  font-size: 16px;
+  font-size: var(--whisper-fs-body-md);
   display: flex;
   justify-content: center;
   align-items: center;
-  transition: all 0.3s ease;
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
 }
 
 .reject-btn {
-  background-color: #e74c3c;
+  background: var(--whisper-error);
 }
 
 .reject-btn:hover {
-  background-color: #c0392b;
-  transform: translateY(-3px);
+  opacity: 0.9;
+  transform: translateY(-2px);
 }
 
 .accept-btn {
-  background-color: #2ecc71;
+  background: var(--whisper-primary);
 }
 
 .accept-btn:hover {
-  background-color: #27ae60;
-  transform: translateY(-3px);
+  opacity: 0.9;
+  transform: translateY(-2px);
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: scale(0.9);
+    transform: scale(0.95);
   }
   to {
     opacity: 1;
     transform: scale(1);
-  }
-}
-
-@keyframes gradientShift {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .contacts-sidebar {
-    width: 250px;
-  }
-  
-  .top-navbar {
-    padding: 0.5rem;
-  }
-  
-  .app-title {
-    font-size: 1.25rem;
-  }
-  
-  .nav-right {
-    gap: 0.5rem;
-  }
-  
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .message-breakdown {
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-  
-  .chart-bar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-  
-  .bar-container {
-    width: 100%;
   }
 }
 </style>

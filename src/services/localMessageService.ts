@@ -1,7 +1,7 @@
-import { 
+import {
   getDb,
-  addMessage, 
-  getMessagesWithFriend, 
+  addMessage,
+  getMessagesWithFriend,
   checkDatabaseStatus,
   clearAllMessages,
   storeUserKeys,
@@ -15,6 +15,8 @@ import {
 } from '../client_db/database.ts';
 import CryptoJS from 'crypto-js';
 import { getChinaTimeISO } from '../utils/timeUtils.ts';
+import { createLogger } from '../utils/logger.ts';
+const log = createLogger('LocalMessageService');
 
 /**
  * A stateless service for handling local message encryption, decryption, and storage.
@@ -37,7 +39,7 @@ class LocalMessageService {
       const user = JSON.parse(userStr);
       return user.id || user.userId;
     } catch (error) {
-      console.error('Failed to parse user info:', error);
+      log.error('Failed to parse user info:', error);
       return null;
     }
   }
@@ -77,11 +79,10 @@ class LocalMessageService {
       };
       
       await storeUserKeys(keyData);
-      console.log('✅ 用户密钥对生成并保存成功');
-      
+
       return keyData;
     } catch (error) {
-      console.error('❌ 生成密钥对失败:', error);
+      log.error('生成密钥对失败:', error);
       // 如果Web Crypto API不可用，使用简化的密钥生成
       const fallbackKeys = {
         publicKey: `pub_${this._getCurrentUserId()}_${Date.now()}`,
@@ -92,7 +93,6 @@ class LocalMessageService {
       };
       
       await storeUserKeys(fallbackKeys);
-      console.log('✅ 使用备用方案生成密钥对');
       return fallbackKeys;
     }
   }
@@ -148,7 +148,7 @@ class LocalMessageService {
         algorithm: 'AES-256-CBC'
       };
     } catch (error) {
-      console.error('❌ 消息加密失败:', error);
+      log.error('消息加密失败:', error);
       return { content, encrypted: false };
     }
   }
@@ -173,7 +173,7 @@ class LocalMessageService {
       
       return decrypted.toString(CryptoJS.enc.Utf8);
     } catch (error) {
-      console.error('❌ 消息解密失败:', error);
+      log.error('消息解密失败:', error);
       return encryptedData.content;
     }
   }
@@ -188,34 +188,27 @@ class LocalMessageService {
         throw new Error("User not logged in, cannot send message.");
       }
 
-      const encryptedData = await this.encryptMessage(messageData.content);
-      
       const message = {
         from: currentUserId,
         to: messageData.to,
-        content: encryptedData.content,
+        content: messageData.content,
         timestamp: getChinaTimeISO(),
         method: messageData.method || 'P2P',
-        encrypted: encryptedData.encrypted,
+        encrypted: false,
         messageType: messageData.messageType || 'text',
         destroyAfter: messageData.destroyAfter || null,
-        encryptionKey: encryptedData.key,
-        encryptionIv: encryptedData.iv,
-        algorithm: encryptedData.algorithm
       };
-      
-      // The addMessage function from database.js will use getDb() internally
+
       const messageId = await addMessage(message);
-      
-      console.log('✅ Message encrypted and saved locally with ID:', messageId);
-      
+
+
       return {
         success: true,
         messageId: messageId,
         message: message
       };
     } catch (error) {
-      console.error('❌ Failed to send message:', error);
+      log.error('Failed to send message:', error);
       return {
         success: false,
         error: error.message
@@ -238,7 +231,6 @@ class LocalMessageService {
       
       const messageId = await addMessage(message);
       
-      console.log('✅ Received message saved locally with ID:', messageId);
       
       return {
         success: true,
@@ -246,7 +238,7 @@ class LocalMessageService {
         message: message
       };
     } catch (error) {
-      console.error('❌ Failed to receive message:', error);
+      log.error('Failed to receive message:', error);
        return {
         success: false,
         error: error.message
@@ -261,7 +253,6 @@ class LocalMessageService {
     try {
       const result = await getMessagesWithFriend(friendId, options);
       
-      console.log(`📖 获取到与用户 ${friendId} 的 ${result.messages.length} 条聊天记录`);
       
       return {
         success: true,
@@ -269,7 +260,7 @@ class LocalMessageService {
         count: result.total
       };
     } catch (error) {
-      console.error('❌ 获取聊天记录失败:', error);
+      log.error('获取聊天记录失败:', error);
       return {
         success: false,
         error: error.message,
@@ -286,7 +277,7 @@ class LocalMessageService {
       const status = await checkDatabaseStatus();
       return status;
     } catch (error) {
-      console.error('❌ 获取存储状态失败:', error);
+      log.error('获取存储状态失败:', error);
       return { success: false, error: error.message };
     }
   }
@@ -299,7 +290,7 @@ class LocalMessageService {
       const result = await clearAllMessages();
       return { success: result };
     } catch (error) {
-      console.error('❌ 清空消息失败:', error);
+      log.error('清空消息失败:', error);
       return { success: false, error: error.message };
     }
   }
@@ -312,7 +303,7 @@ class LocalMessageService {
       const contactId = await dbAddContact(contactData);
       return { success: true, contactId: contactId };
     } catch (error) {
-      console.error('❌ 添加联系人失败:', error);
+      log.error('添加联系人失败:', error);
       return { success: false, error: error.message };
     }
   }
@@ -325,7 +316,7 @@ class LocalMessageService {
       const contacts = await dbGetContacts();
       return { success: true, contacts: contacts };
     } catch (error) {
-      console.error('❌ 获取联系人失败:', error);
+      log.error('获取联系人失败:', error);
       return { success: false, error: error.message, contacts: [] };
     }
   }
@@ -338,7 +329,7 @@ class LocalMessageService {
       const result = await markMessageAsRead(messageId);
       return { success: result };
     } catch (error) {
-      console.error('❌ 标记消息失败:', error);
+      log.error('标记消息失败:', error);
       return { success: false, error: error.message };
     }
   }
@@ -351,7 +342,7 @@ class LocalMessageService {
       const result = await deleteMessage(messageId);
       return { success: result };
     } catch (error) {
-      console.error('❌ 删除消息失败:', error);
+      log.error('删除消息失败:', error);
       return { success: false, error: error.message };
     }
   }
@@ -364,7 +355,7 @@ class LocalMessageService {
       const keys = await dbGetUserKeys();
       return { success: true, keys: keys };
     } catch (error) {
-      console.error('❌ 获取密钥失败:', error);
+      log.error('获取密钥失败:', error);
       return { success: false, error: error.message };
     }
   }
@@ -377,7 +368,7 @@ class LocalMessageService {
       const validation = await validateUserKeys();
       return validation;
     } catch (error) {
-      console.error('❌ 验证密钥失败:', error);
+      log.error('验证密钥失败:', error);
       return { valid: false, error: error.message };
     }
   }
@@ -387,7 +378,6 @@ class LocalMessageService {
    */
   setEncryption(enabled) {
     this.encryptionEnabled = enabled;
-    console.log(`🔐 消息加密已${enabled ? '启用' : '禁用'}`);
   }
 
   /**
@@ -404,19 +394,5 @@ class LocalMessageService {
 
 // Export a single instance of the service
 const localMessageService = new LocalMessageService();
-
-// 在浏览器控制台中暴露调试函数
-if (typeof window !== 'undefined') {
-  window.whisperMessageService = localMessageService;
-  window.initWhisperMessageService = () => localMessageService.initialize();
-  window.getWhisperMessageServiceStatus = () => localMessageService.getStorageStatus();
-  window.clearWhisperMessages = () => localMessageService.clearAllMessages();
-  
-  console.log('💡 Whisper 消息服务调试命令:');
-  console.log('  - whisperMessageService 访问服务实例');
-  console.log('  - initWhisperMessageService() 初始化服务');
-  console.log('  - getWhisperMessageServiceStatus() 查看存储状态');
-  console.log('  - clearWhisperMessages() 清空所有消息');
-}
 
 export default localMessageService;

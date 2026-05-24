@@ -92,6 +92,8 @@
 import { ref, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { hybridStore } from '../store/hybrid-store';
+import { createLogger } from '../utils/logger';
+const log = createLogger('Settings');
 
 const router = useRouter();
 
@@ -164,7 +166,6 @@ function saveSettings() {
   localStorage.setItem('app-settings', JSON.stringify(settings));
   
   // 这里可以调用API保存到服务器
-  console.log('设置已保存');
 }
 
 function resetSettings() {
@@ -180,12 +181,10 @@ function resetSettings() {
 
 function regenerateKeys() {
   // 重新生成密钥对的逻辑
-  console.log('重新生成密钥对');
 }
 
 function exportKeys() {
   // 导出公钥的逻辑
-  console.log('导出公钥');
 }
 
 async function loadMockData() {
@@ -199,7 +198,6 @@ async function loadMockData() {
   // 设置模拟用户到store（异步方法）
   await hybridStore.setUser(mockUser, 'dev-mock-token');
   
-  console.log('开发模式：Settings模拟数据加载完成');
 }
 
 function goBack() {

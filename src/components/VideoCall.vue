@@ -110,6 +110,9 @@
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import hybridStore from '@/store/hybrid-store.ts';
+import { createLogger } from '@/utils/logger.ts';
+
+const log = createLogger('VideoCall');
 
 // 路由
 const route = useRoute();
@@ -153,7 +156,6 @@ const formatDuration = computed(() => {
 
 // 生命周期
 onMounted(async () => {
-  console.log('VideoCall mounted, route params:', route.params);
   
   // 从路由参数获取联系人信息
   if (route.params.contactId) {
@@ -173,7 +175,6 @@ onUnmounted(() => {
 
 // 监听通话状态变化
 watch(callStatus, (newStatus) => {
-  console.log('Video call status changed to:', newStatus);
   
   if (newStatus === 'active') {
     startTimers();
@@ -186,10 +187,9 @@ watch(callStatus, (newStatus) => {
 // 方法
 async function initializeCall() {
   try {
-    console.log('Initializing video call...');
     
     if (!contact.value || !contact.value.id) {
-      console.error('No contact information available');
+      log.error('No contact information available');
       callStatus.value = 'error';
       return;
     }
@@ -197,18 +197,17 @@ async function initializeCall() {
     // 获取 HybridMessaging 实例
     const hybridMessaging = hybridStore.getHybridMessaging();
     if (!hybridMessaging) {
-      console.error('HybridMessaging service not available');
+      log.error('HybridMessaging service not available');
       callStatus.value = 'error';
       return;
     }
     
     // 检查 WebSocket 连接
     if (!hybridMessaging.ws || hybridMessaging.ws.readyState !== WebSocket.OPEN) {
-      console.log('WebSocket not connected, waiting...');
       await new Promise(resolve => setTimeout(resolve, 3000));
       
       if (!hybridMessaging.ws || hybridMessaging.ws.readyState !== WebSocket.OPEN) {
-        console.error('WebSocket connection not available');
+        log.error('WebSocket connection not available');
         callStatus.value = 'error';
         return;
       }
@@ -219,9 +218,7 @@ async function initializeCall() {
     
     // 设置通话接收回调
     hybridMessaging.onVideoCallReceived = (callData) => {
-      console.log('Video call received:', callData);
       if (callData.rejected) {
-        console.log('Video call was rejected');
         callStatus.value = 'rejected';
       }
     };
@@ -231,36 +228,33 @@ async function initializeCall() {
     
     // 检查是否有现有的视频通话连接
     if (hybridMessaging.videoCallState && hybridMessaging.videoCallState.isInCall) {
-      console.log('Found existing video call');
       callStatus.value = 'active';
       return;
     }
     
     // 发起新的视频通话
-    console.log('Starting new video call to:', contact.value);
     callStatus.value = 'ringing';
     
     try {
       const success = await hybridMessaging.initiateVideoCall(contact.value.id);
       
       if (!success) {
-        console.error('Failed to start video call');
+        log.error('Failed to start video call');
         callStatus.value = 'error';
       }
     } catch (error) {
-      console.error('Error starting video call:', error);
+        log.error('Error starting video call:', error);
       callStatus.value = 'error';
     }
     
   } catch (error) {
-    console.error('Error initializing video call:', error);
+    log.error('Error initializing video call:', error);
     callStatus.value = 'error';
   }
 }
 
 async function requestMediaPermissions() {
   try {
-    console.log('Requesting camera and microphone permissions...');
     
     localStream = await navigator.mediaDevices.getUserMedia({
       video: {
@@ -283,10 +277,9 @@ async function requestMediaPermissions() {
     // 初始化音频上下文
     await initializeAudioContext();
     
-    console.log('Media permissions granted and stream initialized');
     
   } catch (error) {
-    console.error('Error requesting media permissions:', error);
+    log.error('Error requesting media permissions:', error);
     
     if (error.name === 'NotAllowedError') {
       alert('需要摄像头和麦克风权限才能进行视频通话');
@@ -314,12 +307,11 @@ async function initializeAudioContext() {
       dataArray = new Uint8Array(bufferLength);
     }
   } catch (error) {
-    console.error('Error initializing audio context:', error);
+    log.error('Error initializing audio context:', error);
   }
 }
 
 function handleVideoCallStatusChange(status, data) {
-  console.log('Video call status change:', status, data);
   
   switch (status.type || status) {
     case 'remote_stream_received':
@@ -415,7 +407,6 @@ function toggleMute() {
     });
   }
   
-  console.log('Mute toggled:', isMuted.value);
 }
 
 function toggleVideo() {
@@ -434,7 +425,6 @@ function toggleVideo() {
     hybridMessaging.toggleVideo();
   }
   
-  console.log('Video toggled:', localVideoEnabled.value);
 }
 
 function toggleSpeaker() {
@@ -444,12 +434,10 @@ function toggleSpeaker() {
     remoteVideo.value.volume = speakerEnabled.value ? 1.0 : 0.5;
   }
   
-  console.log('Speaker toggled:', speakerEnabled.value);
 }
 
 async function acceptCall() {
   try {
-    console.log('Accepting video call...');
     
     // 请求媒体权限（如果还没有）
     if (!localStream) {
@@ -462,21 +450,20 @@ async function acceptCall() {
       if (success) {
         callStatus.value = 'active';
       } else {
-        console.error('Failed to accept video call');
+        log.error('Failed to accept video call');
         callStatus.value = 'error';
       }
     } else {
-      console.error('HybridMessaging service not available');
+      log.error('HybridMessaging service not available');
       callStatus.value = 'error';
     }
   } catch (error) {
-    console.error('Error accepting video call:', error);
+    log.error('Error accepting video call:', error);
     callStatus.value = 'error';
   }
 }
 
 function rejectCall() {
-  console.log('Rejecting video call...');
   const hybridMessaging = hybridStore.getHybridMessaging();
   if (hybridMessaging) {
     hybridMessaging.rejectVideoCall();
@@ -485,7 +472,6 @@ function rejectCall() {
 }
 
 function endCall() {
-  console.log('Ending video call...');
   const hybridMessaging = hybridStore.getHybridMessaging();
   if (hybridMessaging) {
     hybridMessaging.endVideoCall();
@@ -494,7 +480,6 @@ function endCall() {
 }
 
 function cleanup() {
-  console.log('Cleaning up video call...');
   
   // 清除定时器
   if (callTimer) {

@@ -6,6 +6,9 @@
 import { getLocalKey, saveLocalKey, deleteLocalKey } from './key-storage.ts';
 import { getChinaTimeISO } from './timeUtils.ts';
 import { initDatabase } from '../client_db/database';
+import { createLogger } from './logger.ts';
+
+const log = createLogger('EncryptionKeys');
 
 /**
  * 保存用户的加密密钥信息
@@ -19,19 +22,19 @@ import { initDatabase } from '../client_db/database';
 export async function saveUserEncryptionKeys(userId, encryptionData) {
   try {
     const { public_key, registration_id, prekey_bundle } = encryptionData;
-    
+
     // 保存公钥
     const publicKeySuccess = saveLocalKey(`user_${userId}_public_key`, public_key);
-    
+
     // 保存注册ID
     const regIdSuccess = saveLocalKey(`user_${userId}_registration_id`, registration_id.toString());
-    
+
     // 保存预密钥包（如果存在）
     let prekeyBundleSuccess = true;
     if (prekey_bundle) {
       prekeyBundleSuccess = saveLocalKey(`user_${userId}_prekey_bundle`, JSON.stringify(prekey_bundle));
     }
-    
+
     // 保存密钥元数据
     const metadata = {
       userId,
@@ -41,23 +44,23 @@ export async function saveUserEncryptionKeys(userId, encryptionData) {
       hasPrekeyBundle: !!prekey_bundle
     };
     const metadataSuccess = saveLocalKey(`user_${userId}_key_metadata`, JSON.stringify(metadata));
-    
+
     const allSuccess = publicKeySuccess && regIdSuccess && prekeyBundleSuccess && metadataSuccess;
-    
+
     if (allSuccess) {
-      console.log(`✅ 用户 ${userId} 的加密密钥已成功保存`);
-      console.log('📋 保存的密钥信息:', {
+      log.debug(`用户 ${userId} 的加密密钥已成功保存`);
+      log.debug('保存的密钥信息:', {
         publicKey: !!public_key,
         registrationId: !!registration_id,
         prekeyBundle: !!prekey_bundle
       });
     } else {
-      console.error(`❌ 用户 ${userId} 的密钥保存失败`);
+      log.error(`用户 ${userId} 的密钥保存失败`);
     }
-    
+
     return allSuccess;
   } catch (error) {
-    console.error('保存用户加密密钥失败:', error);
+    log.error('保存用户加密密钥失败:', error);
     return false;
   }
 }
@@ -73,15 +76,15 @@ export function getUserEncryptionKeys(userId) {
     const registrationId = getLocalKey(`user_${userId}_registration_id`);
     const prekeyBundleStr = getLocalKey(`user_${userId}_prekey_bundle`);
     const metadataStr = getLocalKey(`user_${userId}_key_metadata`);
-    
+
     if (!publicKey || !registrationId) {
-      console.warn(`⚠️ 用户 ${userId} 的密钥信息不完整`);
+      log.warn(`用户 ${userId} 的密钥信息不完整`);
       return null;
     }
-    
+
     let prekeyBundle = null;
     let metadata = null;
-    
+
     try {
       if (prekeyBundleStr) {
         prekeyBundle = JSON.parse(prekeyBundleStr);
@@ -90,9 +93,9 @@ export function getUserEncryptionKeys(userId) {
         metadata = JSON.parse(metadataStr);
       }
     } catch (parseError) {
-      console.warn('解析密钥数据失败:', parseError);
+      log.warn('解析密钥数据失败:', parseError);
     }
-    
+
     return {
       userId: parseInt(userId),
       publicKey,
@@ -101,7 +104,7 @@ export function getUserEncryptionKeys(userId) {
       metadata
     };
   } catch (error) {
-    console.error('获取用户加密密钥失败:', error);
+    log.error('获取用户加密密钥失败:', error);
     return null;
   }
 }
@@ -117,18 +120,18 @@ export function deleteUserEncryptionKeys(userId) {
     const regIdSuccess = deleteLocalKey(`user_${userId}_registration_id`);
     const prekeyBundleSuccess = deleteLocalKey(`user_${userId}_prekey_bundle`);
     const metadataSuccess = deleteLocalKey(`user_${userId}_key_metadata`);
-    
+
     const allSuccess = publicKeySuccess && regIdSuccess && prekeyBundleSuccess && metadataSuccess;
-    
+
     if (allSuccess) {
-      console.log(`✅ 用户 ${userId} 的所有加密密钥已删除`);
+      log.debug(`用户 ${userId} 的密钥已成功删除`);
     } else {
-      console.warn(`⚠️ 用户 ${userId} 的部分密钥删除失败`);
+      log.warn(`用户 ${userId} 的部分密钥删除失败`);
     }
-    
+
     return allSuccess;
   } catch (error) {
-    console.error('删除用户加密密钥失败:', error);
+    log.error('删除用户加密密钥失败:', error);
     return false;
   }
 }
@@ -161,7 +164,7 @@ export function getAllUsersWithKeys() {
     }
     return users;
   } catch (error) {
-    console.error('获取用户密钥列表失败:', error);
+    log.error('获取用户密钥列表失败:', error);
     return [];
   }
 }
@@ -173,7 +176,7 @@ export function getAllUsersWithKeys() {
  */
 export function validateUserKeys(userId) {
   const keys = getUserEncryptionKeys(userId);
-  
+
   if (!keys) {
     return {
       valid: false,
@@ -185,13 +188,13 @@ export function validateUserKeys(userId) {
       }
     };
   }
-  
+
   const hasPublicKey = !!keys.publicKey;
   const hasRegistrationId = !!keys.registrationId;
   const hasPrekeyBundle = !!keys.prekeyBundle;
-  
+
   const isValid = hasPublicKey && hasRegistrationId;
-  
+
   return {
     valid: isValid,
     message: isValid ? '密钥验证通过' : '密钥不完整',
@@ -212,35 +215,32 @@ export function validateUserKeys(userId) {
  */
 export async function initializeUserEncryption(userId, encryptionData) {
   try {
-    console.log(`🔐 正在为用户 ${userId} 初始化加密环境...`);
-    
+
     // 保存密钥
     const keysSaved = await saveUserEncryptionKeys(userId, encryptionData);
-    
+
     if (!keysSaved) {
       throw new Error('密钥保存失败');
     }
-    
+
     // 验证密钥
     const validation = validateUserKeys(userId);
     if (!validation.valid) {
       throw new Error(`密钥验证失败: ${validation.message}`);
     }
-    
+
     // 初始化本地数据库
     try {
       await initDatabase(userId);
-      console.log('✅ 本地数据库初始化成功');
     } catch (dbError) {
-      console.warn('⚠️ 本地数据库初始化失败:', dbError.message);
+      log.warn('本地数据库初始化失败:', dbError.message);
       // 不抛出错误，因为密钥保存成功更重要
     }
-    
-    console.log(`✅ 用户 ${userId} 的加密环境初始化完成`);
+
     return true;
-    
+
   } catch (error) {
-    console.error(`❌ 用户 ${userId} 的加密环境初始化失败:`, error);
+    log.error(`用户 ${userId} 的加密环境初始化失败:`, error);
     return false;
   }
 }

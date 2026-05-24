@@ -80,6 +80,8 @@ import MessageInput from './messageinput.vue';
 import { getMessageHistory } from '../api';
 import config from '../config/config.ts';
 import { toChinaTime, getChinaTime } from '../utils/timeUtils.ts';
+import { createLogger } from '../utils/logger';
+const log = createLogger('ChatWindow');
 
 const props = defineProps({ contact: Object });
 const messages = ref([]);
@@ -115,14 +117,14 @@ async function loadMessages(contactId) {
       scrollToBottom();
     });
   } catch (error) {
-    console.error('加载消息历史失败:', error);
+    log.error('加载消息历史失败:', error);
     messages.value = [];
   }
 }
 
 async function sendMessage(messageData) {
   if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
-    console.error('WebSocket连接未建立');
+    log.error('WebSocket连接未建立');
     return;
   }
   
@@ -159,7 +161,7 @@ async function sendMessage(messageData) {
         imageUrl: URL.createObjectURL(messageData.file)
       };
     } catch (error) {
-      console.error('处理隐写术图片失败:', error);
+      log.error('处理隐写术图片失败:', error);
       return;
     }
   } else {
@@ -225,13 +227,13 @@ function formatTime(timestamp) {
     } else if (typeof timestamp === 'number') {
       date = new Date(timestamp);
     } else {
-      console.warn('未知的时间戳格式:', timestamp);
+      log.warn('未知的时间戳格式:', timestamp);
       return '无效时间';
     }
     
     // 检查日期是否有效
     if (isNaN(date.getTime())) {
-      console.warn('无效的时间戳:', timestamp);
+      log.warn('无效的时间戳:', timestamp);
       return '无效时间';
     }
     
@@ -261,7 +263,7 @@ function formatTime(timestamp) {
       return `${monthDay} ${timeStr}`;
     }
   } catch (error) {
-    console.error('formatTime错误:', error, timestamp);
+    log.error('formatTime错误:', error, timestamp);
     return '时间错误';
   }
 }
@@ -278,13 +280,11 @@ function startCall() {
 function openImageModal(message) {
   currentImageMessage.value = message;
   showImageModal.value = true;
-  console.log('打开图片放大模态框:', message);
 }
 
 function closeImageModal() {
   showImageModal.value = false;
   currentImageMessage.value = null;
-  console.log('关闭图片放大模态框');
 }
 
 // WebSocket连接管理
@@ -295,7 +295,6 @@ function connectWebSocket() {
   ws.value = new WebSocket(wsUrl);
   
   ws.value.onopen = () => {
-    console.log('WebSocket连接已建立');
   };
   
   ws.value.onmessage = (event) => {
@@ -303,12 +302,11 @@ function connectWebSocket() {
       const data = JSON.parse(event.data);
       handleWebSocketMessage(data);
     } catch (error) {
-      console.error('解析WebSocket消息失败:', error);
+      log.error('解析WebSocket消息失败:', error);
     }
   };
   
   ws.value.onclose = () => {
-    console.log('WebSocket连接已关闭');
     // 尝试重连
     setTimeout(() => {
       if (store.user) {
@@ -318,7 +316,7 @@ function connectWebSocket() {
   };
   
   ws.value.onerror = (error) => {
-    console.error('WebSocket错误:', error);
+    log.error('WebSocket错误:', error);
   };
 }
 

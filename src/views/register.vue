@@ -135,7 +135,9 @@
 <script setup>
 import { ref, reactive, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { hybridStore } from '../store/hybrid-store';
+import { hybridStore } from '../store/hybrid-store'
+import { createLogger } from '../utils/logger'
+const log = createLogger('Register');
 import { authAPI } from '../api/hybrid-api';
 import { initializeUserEncryption } from '../utils/encryption-keys';
 import { storeUserKeys } from '../client_db/database';
@@ -189,12 +191,11 @@ async function handleRegister() {
     try {
       if (authPayload.keys) {
         await storeUserKeys(authPayload.keys);
-        console.log('✅ 用户密钥已存储到客户端本地存储');
       } else {
-        console.warn('⚠️  注册响应中未包含密钥信息');
+        log.warn('注册响应中未包含密钥信息');
       }
     } catch (keyStorageError) {
-      console.error('❌ 存储密钥到客户端失败:', keyStorageError);
+      log.error('存储密钥到客户端失败:', keyStorageError);
       // 密钥存储失败不阻止注册流程，但会记录错误
     }
 
@@ -206,9 +207,8 @@ async function handleRegister() {
         registration_id: authPayload.registrationId || userId,
         prekey_bundle: authPayload.keys?.prekey_bundle || authPayload.keys?.prekeyBundle
       });
-      console.log('用户加密环境初始化完成');
     } catch (encryptionError) {
-      console.error('加密环境初始化失败:', encryptionError);
+      log.error('加密环境初始化失败:', encryptionError);
       // 加密初始化失败不阻止注册流程，但会记录错误
     }
 
@@ -216,7 +216,7 @@ async function handleRegister() {
     router.push('/chat');
 
   } catch (error) {
-    console.error('注册失败:', error);
+    log.error('注册失败:', error);
     
     if (error.response) {
       // 服务器返回了错误响应

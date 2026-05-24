@@ -536,7 +536,7 @@ function cleanup() {
   left: 0;
   right: 0;
   bottom: 0;
-  background: #000;
+  background: var(--whisper-bg);
   display: flex;
   flex-direction: column;
   z-index: 1000;
@@ -552,7 +552,7 @@ function cleanup() {
   width: 100%;
   height: 100%;
   position: relative;
-  background: #1a1a1a;
+  background: var(--whisper-surface-container);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -573,15 +573,15 @@ function cleanup() {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--whisper-on-surface-variant);
   text-align: center;
 }
 
 .avatar-placeholder {
   width: 120px;
   height: 120px;
-  border-radius: 50%;
-  margin-bottom: 1rem;
+  border-radius: var(--whisper-radius-full);
+  margin-bottom: var(--whisper-lg);
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -597,13 +597,13 @@ function cleanup() {
 .default-avatar {
   width: 100%;
   height: 100%;
-  background: #007bff;
-  color: white;
+  background: var(--whisper-primary-fixed);
+  color: var(--whisper-on-primary-fixed);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 3rem;
-  font-weight: bold;
+  font-weight: 500;
 }
 
 .local-video-container {
@@ -612,10 +612,10 @@ function cleanup() {
   right: 20px;
   width: 200px;
   height: 150px;
-  border-radius: 12px;
+  border-radius: var(--whisper-radius-xl);
   overflow: hidden;
-  background: #333;
-  border: 2px solid #fff;
+  background: var(--whisper-surface-container-high);
+  border: 2px solid var(--whisper-outline-variant);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   transition: all 0.3s ease;
 }
@@ -641,13 +641,13 @@ function cleanup() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #333;
+  background: var(--whisper-surface-container-high);
 }
 
 .local-avatar {
   width: 60px;
   height: 60px;
-  border-radius: 50%;
+  border-radius: var(--whisper-radius-full);
 }
 
 .local-avatar .default-avatar {
@@ -659,28 +659,28 @@ function cleanup() {
   top: 0;
   left: 0;
   right: 0;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent);
-  padding: 2rem;
-  color: white;
+  background: linear-gradient(to bottom, rgba(19, 19, 19, 0.85), transparent);
+  padding: var(--whisper-lg);
+  color: var(--whisper-on-surface);
   pointer-events: none;
 }
 
 .call-status h2 {
-  margin: 0 0 1rem 0;
-  font-size: 1.5rem;
+  margin: 0 0 var(--whisper-md) 0;
+  font-size: var(--whisper-fs-headline-md);
   font-weight: 300;
 }
 
 .contact-info {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: var(--whisper-md);
 }
 
 .contact-avatar {
   width: 60px;
   height: 60px;
-  border-radius: 50%;
+  border-radius: var(--whisper-radius-full);
   overflow: hidden;
 }
 
@@ -696,14 +696,15 @@ function cleanup() {
 
 .contact-details h3 {
   margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: var(--whisper-fs-body-lg);
+  font-weight: 500;
+  color: var(--whisper-on-surface);
 }
 
 .call-duration {
-  margin: 0.25rem 0 0 0;
-  font-size: 1rem;
-  opacity: 0.8;
+  margin: 2px 0 0 0;
+  font-size: var(--whisper-fs-body-md);
+  color: var(--whisper-on-surface-variant);
 }
 
 .call-controls {
@@ -712,20 +713,21 @@ function cleanup() {
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 1rem;
-  padding: 1rem;
-  background: rgba(0, 0, 0, 0.5);
-  border-radius: 50px;
+  gap: var(--whisper-md);
+  padding: var(--whisper-md);
+  background: rgba(19, 19, 19, 0.7);
+  border-radius: var(--whisper-radius-full);
   backdrop-filter: blur(10px);
+  border: 1px solid var(--whisper-outline-variant);
 }
 
 .control-btn {
   width: 60px;
   height: 60px;
-  border-radius: 50%;
+  border-radius: var(--whisper-radius-full);
   border: none;
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
+  background: var(--whisper-surface-container-high);
+  color: var(--whisper-on-surface);
   font-size: 1.5rem;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -735,20 +737,22 @@ function cleanup() {
 }
 
 .control-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--whisper-surface-container-highest);
   transform: scale(1.1);
 }
 
 .control-btn.active {
-  background: #dc3545;
+  background: var(--whisper-error-container);
+  color: var(--whisper-error);
 }
 
 .end-call-btn {
-  background: #dc3545;
+  background: var(--whisper-error);
+  color: var(--whisper-on-error);
 }
 
 .end-call-btn:hover {
-  background: #c82333;
+  opacity: 0.9;
 }
 
 .incoming-call-controls {
@@ -757,38 +761,39 @@ function cleanup() {
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 2rem;
+  gap: var(--whisper-lg);
 }
 
 .accept-btn,
 .reject-btn {
-  padding: 1rem 2rem;
+  padding: var(--whisper-md) var(--whisper-lg);
   border: none;
-  border-radius: 50px;
-  font-size: 1.1rem;
-  font-weight: 600;
+  border-radius: var(--whisper-radius-full);
+  font-size: var(--whisper-fs-label-lg);
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
   min-width: 120px;
+  font-family: inherit;
 }
 
 .accept-btn {
-  background: #28a745;
-  color: white;
+  background: var(--whisper-primary);
+  color: var(--whisper-on-primary);
 }
 
 .accept-btn:hover {
-  background: #218838;
+  opacity: 0.9;
   transform: scale(1.05);
 }
 
 .reject-btn {
-  background: #dc3545;
-  color: white;
+  background: var(--whisper-error);
+  color: var(--whisper-on-error);
 }
 
 .reject-btn:hover {
-  background: #c82333;
+  opacity: 0.9;
   transform: scale(1.05);
 }
 
@@ -800,49 +805,49 @@ function cleanup() {
     top: 10px;
     right: 10px;
   }
-  
+
   .local-video-container.minimized {
     width: 80px;
     height: 60px;
   }
-  
+
   .call-info-overlay {
-    padding: 1rem;
+    padding: var(--whisper-md);
   }
-  
+
   .call-status h2 {
-    font-size: 1.25rem;
+    font-size: var(--whisper-fs-headline-sm);
   }
-  
+
   .contact-avatar {
     width: 50px;
     height: 50px;
   }
-  
+
   .contact-details h3 {
-    font-size: 1.1rem;
+    font-size: var(--whisper-fs-body-md);
   }
-  
+
   .control-btn {
     width: 50px;
     height: 50px;
     font-size: 1.25rem;
   }
-  
+
   .call-controls {
-    gap: 0.75rem;
+    gap: var(--whisper-sm);
     bottom: 20px;
   }
-  
+
   .incoming-call-controls {
-    gap: 1rem;
+    gap: var(--whisper-md);
     bottom: 20px;
   }
-  
+
   .accept-btn,
   .reject-btn {
-    padding: 0.75rem 1.5rem;
-    font-size: 1rem;
+    padding: var(--whisper-sm) var(--whisper-md);
+    font-size: var(--whisper-fs-label-md);
     min-width: 100px;
   }
 }

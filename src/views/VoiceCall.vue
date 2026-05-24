@@ -687,11 +687,8 @@ function goBack() {
 <style scoped>
 .voice-call-page {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  inset: 0;
+  background: var(--whisper-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -701,16 +698,16 @@ function goBack() {
 .call-overlay {
   width: 100%;
   max-width: 400px;
-  padding: 2rem;
+  padding: var(--whisper-xl);
   text-align: center;
-  color: white;
+  color: var(--whisper-on-surface);
 }
 
 .call-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 2rem;
+  margin-bottom: var(--whisper-xl);
 }
 
 .minimize-btn,
@@ -719,9 +716,9 @@ function goBack() {
   width: 40px;
   height: 40px;
   border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
+  border-radius: var(--whisper-radius-full);
+  background: var(--whisper-surface-container-high);
+  color: var(--whisper-on-surface-variant);
   font-size: 1.2rem;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -730,14 +727,15 @@ function goBack() {
 .minimize-btn:hover,
 .end-call-btn:hover,
 .back-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--whisper-surface-container-highest);
+  color: var(--whisper-on-surface);
   transform: scale(1.1);
 }
 
 .back-btn {
   font-size: 0.9rem;
   width: 60px;
-  border-radius: 20px;
+  border-radius: var(--whisper-radius-full);
 }
 
 .call-status {
@@ -745,27 +743,28 @@ function goBack() {
 }
 
 .status-text {
-  font-size: 1.1rem;
-  opacity: 0.9;
+  font-size: var(--whisper-fs-body-lg);
+  color: var(--whisper-on-surface-variant);
 }
 
 .call-timer {
   font-size: 1.3rem;
   font-weight: bold;
-  margin-top: 0.5rem;
+  margin-top: var(--whisper-sm);
+  color: var(--whisper-primary);
 }
 
 .contact-info {
-  margin-bottom: 3rem;
+  margin-bottom: var(--whisper-xl);
 }
 
 .contact-avatar {
   width: 120px;
   height: 120px;
-  margin: 0 auto 1rem;
-  border-radius: 50%;
+  margin: 0 auto var(--whisper-md);
+  border-radius: var(--whisper-radius-full);
   overflow: hidden;
-  border: 4px solid rgba(255, 255, 255, 0.3);
+  border: 4px solid var(--whisper-outline-variant);
 }
 
 .contact-avatar img {
@@ -777,7 +776,8 @@ function goBack() {
 .avatar-placeholder {
   width: 100%;
   height: 100%;
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--whisper-primary-fixed);
+  color: var(--whisper-on-primary-fixed);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -786,30 +786,33 @@ function goBack() {
 }
 
 .contact-name {
-  font-size: 1.8rem;
-  margin-bottom: 0.5rem;
+  font-size: var(--whisper-fs-display-sm);
+  margin-bottom: var(--whisper-sm);
   font-weight: 300;
+  color: var(--whisper-on-surface);
 }
 
 .method-badge {
   padding: 0.3rem 0.8rem;
-  border-radius: 15px;
-  font-size: 0.9rem;
+  border-radius: var(--whisper-radius-full);
+  font-size: var(--whisper-fs-body-sm);
   font-weight: 500;
 }
 
 .method-badge.p2p {
-  background: rgba(76, 175, 80, 0.3);
-  border: 1px solid rgba(76, 175, 80, 0.5);
+  background: rgba(186, 202, 201, 0.15);
+  border: 1px solid rgba(186, 202, 201, 0.4);
+  color: var(--whisper-primary);
 }
 
 .method-badge.server {
-  background: rgba(255, 193, 7, 0.3);
-  border: 1px solid rgba(255, 193, 7, 0.5);
+  background: rgba(221, 192, 183, 0.15);
+  border: 1px solid rgba(221, 192, 183, 0.4);
+  color: var(--whisper-tertiary);
 }
 
 .audio-visualizer {
-  margin: 2rem 0;
+  margin: var(--whisper-xl) 0;
 }
 
 .wave-container {
@@ -822,7 +825,8 @@ function goBack() {
 
 .wave-bar {
   width: 4px;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--whisper-primary);
+  opacity: 0.6;
   border-radius: 2px;
   transition: height 0.1s ease;
   min-height: 4px;
@@ -832,19 +836,19 @@ function goBack() {
   display: flex;
   justify-content: center;
   gap: 1.5rem;
-  margin: 3rem 0;
+  margin: var(--whisper-xl) 0;
 }
 
 .control-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--whisper-sm);
   padding: 1rem;
   border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
+  border-radius: var(--whisper-radius-full);
+  background: var(--whisper-surface-container-high);
+  color: var(--whisper-on-surface-variant);
   cursor: pointer;
   transition: all 0.3s ease;
   min-width: 80px;
@@ -852,20 +856,23 @@ function goBack() {
 }
 
 .control-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--whisper-surface-container-highest);
+  color: var(--whisper-on-surface);
   transform: translateY(-2px);
 }
 
 .control-btn.active {
-  background: rgba(255, 255, 255, 0.4);
+  background: var(--whisper-surface-container-highest);
+  color: var(--whisper-primary);
 }
 
 .end-btn {
-  background: rgba(244, 67, 54, 0.8) !important;
+  background: var(--whisper-error-container) !important;
+  color: var(--whisper-error) !important;
 }
 
 .end-btn:hover {
-  background: rgba(244, 67, 54, 1) !important;
+  opacity: 0.9;
 }
 
 .btn-icon {
@@ -873,23 +880,24 @@ function goBack() {
 }
 
 .btn-label {
-  font-size: 0.8rem;
-  opacity: 0.9;
+  font-size: var(--whisper-fs-label-md);
+  color: var(--whisper-on-surface-variant);
 }
 
 .call-quality {
-  margin-top: 2rem;
-  padding: 1rem;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 10px;
+  margin-top: var(--whisper-xl);
+  padding: var(--whisper-md);
+  background: var(--whisper-surface-container);
+  border-radius: var(--whisper-radius-lg);
+  border: 1px solid var(--whisper-outline-variant);
 }
 
 .quality-indicator {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  gap: var(--whisper-sm);
+  margin-bottom: var(--whisper-sm);
 }
 
 .quality-bars {
@@ -900,46 +908,45 @@ function goBack() {
 .quality-bar {
   width: 4px;
   height: 12px;
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--whisper-outline-variant);
   border-radius: 2px;
 }
 
 .quality-bar.active {
-  background: #4caf50;
+  background: var(--whisper-primary);
 }
 
 .quality-label,
 .quality-text {
-  font-size: 0.9rem;
-  opacity: 0.8;
+  font-size: var(--whisper-fs-body-sm);
+  color: var(--whisper-on-surface-variant);
 }
 
 .network-info {
   display: flex;
   justify-content: space-around;
-  font-size: 0.8rem;
-  opacity: 0.7;
+  font-size: var(--whisper-fs-body-sm);
+  color: var(--whisper-on-surface-variant);
 }
 
-/* 响应式设计 */
 @media (max-width: 480px) {
   .call-overlay {
-    padding: 1rem;
+    padding: var(--whisper-md);
   }
-  
+
   .contact-avatar {
     width: 100px;
     height: 100px;
   }
-  
+
   .contact-name {
     font-size: 1.5rem;
   }
-  
+
   .call-controls {
     gap: 1rem;
   }
-  
+
   .control-btn {
     min-width: 70px;
     min-height: 70px;

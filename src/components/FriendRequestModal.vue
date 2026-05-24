@@ -1,399 +1,295 @@
-﻿<template>
-  <div v-if="isVisible" class="modal-overlay" @click="closeModal">
-    <div class="modal-content" @click.stop>
+<template>
+  <div v-if="visible" class="modal-overlay" @click.self="handleClose">
+    <div class="modal-container">
       <div class="modal-header">
-        <h3>好友申请</h3>
-        <button @click="closeModal" class="close-btn">×</button>
+        <h3>好友请求</h3>
+        <button class="close-btn" @click="handleClose">✕</button>
       </div>
-      
       <div class="modal-body">
-        <!-- 申请列表 -->
-        <div v-if="requests.length > 0" class="request-list">
-          <div 
-            v-for="request in requests" 
-            :key="request.id" 
-            class="request-item"
-          >
-            <div class="user-avatar">
-              <img v-if="request.from_user_avatar" :src="request.from_user_avatar" :alt="request.from_user_username" />
-              <div v-else class="avatar-placeholder">
-                {{ request.from_user_username && request.from_user_username.length > 0 ? request.from_user_username[0].toUpperCase() : '?' }}
-              </div>
+        <div v-if="loading" class="loading-spinner">
+          <div class="spinner"></div>
+          <span>加载中...</span>
+        </div>
+        <div v-else-if="requests.length === 0" class="empty-state">
+          暂无好友请求
+        </div>
+        <div v-else class="request-list">
+          <div v-for="request in requests" :key="request.id" class="request-card">
+            <div class="avatar">{{ request.username.charAt(0).toUpperCase() }}</div>
+            <div class="user-info">
+              <div class="username">{{ request.username }}</div>
+              <div class="user-id">ID: {{ request.userId }}</div>
             </div>
-            <div class="request-info">
-              <div class="username">{{ request.from_user_username }}</div>
-              <div class="user-id">ID: {{ request.from_user_id }}</div>
-              <div v-if="request.message" class="request-message">{{ request.message }}</div>
-              <div class="request-time">{{ formatTime(request.created_at) }}</div>
-            </div>
-            <div class="request-actions">
-              <button 
-                @click="handleRequest(request.id, 'accept')"
+            <div class="actions">
+              <button
                 class="accept-btn"
-                :disabled="processingRequests.includes(request.id)"
+                :disabled="processing[request.id]"
+                @click="handleAccept(request)"
               >
-                <span v-if="!processingRequests.includes(request.id)">同意</span>
-                <span v-else>处理中...</span>
+                {{ processing[request.id] === 'accept' ? '...' : '接受' }}
               </button>
-              <button 
-                @click="handleRequest(request.id, 'reject')"
+              <button
                 class="reject-btn"
-                :disabled="processingRequests.includes(request.id)"
+                :disabled="processing[request.id]"
+                @click="handleReject(request)"
               >
-                <span v-if="!processingRequests.includes(request.id)">拒绝</span>
-                <span v-else>处理中...</span>
+                {{ processing[request.id] === 'reject' ? '...' : '拒绝' }}
               </button>
             </div>
           </div>
-        </div>
-
-        <!-- 无申请状态 -->
-        <div v-else-if="!loading" class="no-requests">
-          <div class="no-requests-icon">📭</div>
-          <div class="no-requests-text">暂无好友申请</div>
-          <div class="no-requests-hint">当有人向您发送好友申请时，会在这里显示</div>
-        </div>
-
-        <!-- 加载状态 -->
-        <div v-if="loading" class="loading">
-          <div class="loading-spinner"></div>
-          <span>加载中...</span>
         </div>
       </div>
     </div>
   </div>
 </template>
 
-<script>
+<script setup lang="ts">
 import { ref, watch } from 'vue'
-import { hybridApi } from '../api/hybrid-api.ts'
-import { hybridStore } from '../store/hybrid-store.ts'
-import { toChinaTime, getChinaTime } from '../utils/timeUtils.ts'
-import { createLogger } from '../utils/logger'
-const log = createLogger('FriendRequestModal')
+import { hybridApi } from '../api/hybrid-api'
 
-export default {
-  name: 'FriendRequestModal',
-  props: {
-    isVisible: {
-      type: Boolean,
-      default: false
-    }
-  },
-  emits: ['close', 'request-handled'],
-  setup(props, { emit }) {
-    const requests = ref([])
-    const loading = ref(false)
-    const processingRequests = ref([])
+const props = defineProps<{
+  visible: boolean
+}>()
 
-    // 监听模态框显示状态，自动加载申请列表
-    watch(() => props.isVisible, (newVal) => {
-      if (newVal) {
-        loadRequests()
-      }
-    })
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'request-handled'): void
+}>()
 
-    const loadRequests = async () => {
-      loading.value = true
-      try {
-        const response = await hybridApi.getFriendRequests('received')
-        if (response.data && response.data.success) {
-          requests.value = response.data.data || []
-        }
-      } catch (error) {
-        log.error('加载好友申请失败:', error)
-        alert('加载好友申请失败，请重试')
-      } finally {
-        loading.value = false
-      }
-    }
+const requests = ref<{ id: number; username: string; userId: number }[]>([])
+const loading = ref(false)
+const processing = ref<Record<number, string>>({})
 
-    const handleRequest = async (requestId, action) => {
-      if (processingRequests.value.includes(requestId)) return
-
-      processingRequests.value.push(requestId)
-      try {
-        await hybridApi.handleFriendRequest(requestId, action)
-        
-        // 从列表中移除已处理的申请
-        const request = requests.value.find(r => r.id === requestId)
-        requests.value = requests.value.filter(r => r.id !== requestId)
-        
-        if (action === 'accept' && request) {
-          // 如果同意申请，添加到联系人列表
-          hybridStore.addContact({
-            id: request.from_user_id,
-            username: request.from_user_username,
-            avatar: request.from_user_avatar,
-            online: false
-          })
-        }
-        
-        emit('request-handled', { requestId, action, request })
-        
-        const message = action === 'accept' ? '已同意好友申请' : '已拒绝好友申请'
-        alert(message)
-        
-      } catch (error) {
-        log.error('处理好友申请失败:', error)
-        alert('处理申请失败，请重试')
-      } finally {
-        processingRequests.value = processingRequests.value.filter(id => id !== requestId)
-      }
-    }
-
-    const formatTime = (timeString) => {
-      const date = toChinaTime(timeString)
-      const now = getChinaTime()
-      const diff = now - date
-      
-      if (diff < 60000) { // 1分钟内
-        return '刚刚'
-      } else if (diff < 3600000) { // 1小时内
-        return `${Math.floor(diff / 60000)}分钟前`
-      } else if (diff < 86400000) { // 24小时内
-        return `${Math.floor(diff / 3600000)}小时前`
-      } else {
-        // 手动格式化日期，确保显示中国时间
-        const year = date.getFullYear()
-        const month = (date.getMonth() + 1).toString().padStart(2, '0')
-        const day = date.getDate().toString().padStart(2, '0')
-        return `${year}/${month}/${day}`
-      }
-    }
-
-    const closeModal = () => {
-      emit('close')
-    }
-
-    return {
-      requests,
-      loading,
-      processingRequests,
-      handleRequest,
-      formatTime,
-      closeModal
-    }
+watch(() => props.visible, async (val) => {
+  if (val) {
+    await fetchRequests()
   }
+})
+
+async function fetchRequests() {
+  loading.value = true
+  try {
+    requests.value = await hybridApi.getFriendRequests()
+  } catch (err) {
+    console.error('Failed to fetch friend requests:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleAccept(request: { id: number; username: string; userId: number }) {
+  processing.value[request.id] = 'accept'
+  try {
+    await hybridApi.acceptFriendRequest(request.userId)
+    requests.value = requests.value.filter(r => r.id !== request.id)
+    emit('request-handled')
+  } catch (err) {
+    console.error('Failed to accept friend request:', err)
+  } finally {
+    delete processing.value[request.id]
+    processing.value = { ...processing.value }
+  }
+}
+
+async function handleReject(request: { id: number; username: string; userId: number }) {
+  processing.value[request.id] = 'reject'
+  try {
+    await hybridApi.rejectFriendRequest(request.userId)
+    requests.value = requests.value.filter(r => r.id !== request.id)
+  } catch (err) {
+    console.error('Failed to reject friend request:', err)
+  } finally {
+    delete processing.value[request.id]
+    processing.value = { ...processing.value }
+  }
+}
+
+function handleClose() {
+  emit('close')
 }
 </script>
 
 <style scoped>
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  inset: 0;
+  background: rgba(14, 14, 14, 0.8);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
 }
 
-.modal-content {
-  background: white;
-  border-radius: 8px;
-  width: 90%;
-  max-width: 600px;
+.modal-container {
+  background: var(--whisper-surface-container-high);
+  border-radius: var(--whisper-radius-xl);
+  width: 460px;
+  max-width: 90vw;
   max-height: 80vh;
-  overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--whisper-outline-variant);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #eee;
-  background: #f8f9fa;
+  padding: var(--whisper-lg);
+  border-bottom: 1px solid var(--whisper-outline-variant);
+  flex-shrink: 0;
 }
 
 .modal-header h3 {
   margin: 0;
-  color: #333;
+  font-size: var(--whisper-fs-headline-sm);
+  color: var(--whisper-on-surface);
+  font-weight: 500;
 }
 
 .close-btn {
   background: none;
   border: none;
-  font-size: 1.5rem;
+  color: var(--whisper-on-surface-variant);
+  font-size: 18px;
   cursor: pointer;
-  color: #666;
-  padding: 0;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  transition: background-color 0.2s;
+  padding: 4px 8px;
+  border-radius: var(--whisper-radius-full);
+  transition: background 0.2s, color 0.2s;
 }
 
 .close-btn:hover {
-  background: #e9ecef;
+  background: var(--whisper-surface-container-highest);
+  color: var(--whisper-on-surface);
 }
 
 .modal-body {
-  padding: 1.5rem;
-  max-height: 60vh;
+  padding: var(--whisper-lg);
   overflow-y: auto;
+  flex: 1;
+}
+
+.loading-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--whisper-sm);
+  padding: var(--whisper-lg);
+  color: var(--whisper-on-surface-variant);
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--whisper-outline);
+  border-top-color: var(--whisper-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.empty-state {
+  text-align: center;
+  padding: var(--whisper-lg);
+  color: var(--whisper-on-surface-variant);
+  font-size: var(--whisper-fs-body-md);
 }
 
 .request-list {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--whisper-sm);
 }
 
-.request-item {
+.request-card {
   display: flex;
   align-items: center;
-  padding: 1rem;
-  border: 1px solid #eee;
-  border-radius: 8px;
-  background: #f8f9fa;
+  gap: var(--whisper-md);
+  padding: var(--whisper-md);
+  background: var(--whisper-surface-container);
+  border-radius: var(--whisper-radius-lg);
+  border: 1px solid var(--whisper-outline-variant);
 }
 
-.user-avatar {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  overflow: hidden;
-  margin-right: 1rem;
-  flex-shrink: 0;
-}
-
-.user-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.avatar-placeholder {
-  width: 100%;
-  height: 100%;
-  background: #007bff;
-  color: white;
+.avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--whisper-radius-full);
+  background: var(--whisper-primary-fixed);
+  color: var(--whisper-on-primary-fixed);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
-  font-size: 1.2rem;
+  font-size: var(--whisper-fs-title-md);
+  font-weight: 500;
+  flex-shrink: 0;
 }
 
-.request-info {
+.user-info {
   flex: 1;
-  margin-right: 1rem;
+  min-width: 0;
 }
 
 .username {
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 0.25rem;
+  font-size: var(--whisper-fs-body-lg);
+  color: var(--whisper-on-surface);
+  font-weight: 500;
 }
 
 .user-id {
-  color: #666;
-  font-size: 0.875rem;
-  margin-bottom: 0.25rem;
+  font-size: var(--whisper-fs-body-sm);
+  color: var(--whisper-on-surface-variant);
+  margin-top: 2px;
 }
 
-.request-message {
-  color: #555;
-  font-style: italic;
-  margin-bottom: 0.25rem;
-  padding: 0.5rem;
-  background: white;
-  border-radius: 4px;
-  border-left: 3px solid #007bff;
-}
-
-.request-time {
-  color: #999;
-  font-size: 0.75rem;
-}
-
-.request-actions {
+.actions {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--whisper-sm);
   flex-shrink: 0;
 }
 
-.accept-btn, .reject-btn {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: background-color 0.2s;
-}
-
 .accept-btn {
-  background: #28a745;
-  color: white;
+  background: var(--whisper-primary);
+  color: var(--whisper-on-primary);
+  border: none;
+  padding: 6px 16px;
+  border-radius: var(--whisper-radius-full);
+  font-size: var(--whisper-fs-label-lg);
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  font-family: inherit;
 }
 
 .accept-btn:hover:not(:disabled) {
-  background: #218838;
+  opacity: 0.9;
 }
 
 .reject-btn {
-  background: #dc3545;
-  color: white;
+  background: transparent;
+  color: var(--whisper-error);
+  border: 1px solid var(--whisper-error);
+  padding: 6px 16px;
+  border-radius: var(--whisper-radius-full);
+  font-size: var(--whisper-fs-label-lg);
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  font-family: inherit;
 }
 
 .reject-btn:hover:not(:disabled) {
-  background: #c82333;
+  opacity: 0.8;
 }
 
-.accept-btn:disabled, .reject-btn:disabled {
-  opacity: 0.6;
+.accept-btn:disabled,
+.reject-btn:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
-}
-
-.no-requests {
-  text-align: center;
-  padding: 3rem 1rem;
-}
-
-.no-requests-icon {
-  font-size: 4rem;
-  margin-bottom: 1rem;
-}
-
-.no-requests-text {
-  font-size: 1.25rem;
-  color: #333;
-  margin-bottom: 0.5rem;
-}
-
-.no-requests-hint {
-  color: #666;
-  font-size: 0.875rem;
-}
-
-.loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-  gap: 0.5rem;
-}
-
-.loading-spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid #f3f3f3;
-  border-top: 2px solid #007bff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
 }
 </style>

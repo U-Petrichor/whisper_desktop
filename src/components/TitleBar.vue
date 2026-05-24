@@ -7,7 +7,7 @@ defineProps<{
 </script>
 
 <template>
-  <div class="titlebar">
+  <div class="titlebar" :class="{ 'titlebar--login': variant === 'login' }">
     <div class="titlebar-drag">
       <span class="titlebar-title">Whisper</span>
     </div>
@@ -33,6 +33,15 @@ defineProps<{
   justify-content: space-between;
   background: var(--whisper-bg);
   flex-shrink: 0;
+}
+
+.titlebar--login {
+  background: transparent;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
 }
 
 .titlebar-drag {

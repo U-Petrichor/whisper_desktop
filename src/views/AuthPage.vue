@@ -1,10 +1,12 @@
 <template>
   <div class="auth-page">
     <TitleBar variant="login" />
+    <SmokeEffect />
 
     <div class="auth-content">
-      <!-- Login card -->
-      <div v-if="!showRegister" class="auth-card">
+      <Transition name="auth-switch" mode="out-in">
+        <!-- Login card -->
+        <div v-if="!showRegister" key="login" class="auth-card">
         <div class="card-decoration"></div>
         <div class="card-header">
           <h1 class="card-title">欢迎回来</h1>
@@ -67,8 +69,7 @@
         </div>
       </div>
 
-      <!-- Register card -->
-      <div v-else class="auth-card">
+        <div v-else key="register" class="auth-card">
         <div class="card-decoration"></div>
         <div class="card-header">
           <h1 class="card-title">创建账号</h1>
@@ -150,7 +151,8 @@
           <span>已有账户？</span>
           <button @click="switchToLogin" class="text-link">登录</button>
         </div>
-      </div>
+        </div>
+      </Transition>
 
       <!-- Forgot password overlay -->
       <div v-if="showForgotPassword" class="forgot-password-overlay">
@@ -214,8 +216,10 @@ import api from '../api/hybrid-api'
 import { initializeUserEncryption } from '../utils/encryption-keys'
 import { storeUserKeys } from '../client_db/database'
 import { extractAuthPayload } from '../utils/api-contract'
+import { transitionToRegisterWindow, transitionToLoginWindowFromRegister } from '../utils/window-manager'
 import { createLogger } from '../utils/logger'
 import TitleBar from '../components/TitleBar.vue'
+import SmokeEffect from '../components/SmokeEffect.vue'
 const log = createLogger('AuthPage')
 
 const router = useRouter()
@@ -265,11 +269,13 @@ const canRegister = computed(() => {
 function switchToRegister() {
   showRegister.value = true
   errorMessage.value = ''
+  transitionToRegisterWindow()
 }
 
 function switchToLogin() {
   showRegister.value = false
   errorMessage.value = ''
+  transitionToLoginWindowFromRegister()
 }
 
 async function handleLogin() {
@@ -513,45 +519,26 @@ onUnmounted(() => {
 .auth-page {
   height: 100vh;
   background: var(--whisper-bg);
-  display: flex;
-  flex-direction: column;
+  position: relative;
   overflow: hidden;
 }
 
 .auth-content {
-  flex: 1;
+  height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--whisper-gutter);
-  padding-top: calc(var(--whisper-titlebar-height) + var(--whisper-sm));
+  padding-top: var(--whisper-titlebar-height);
   overflow-y: auto;
 }
 
 .auth-card {
   width: 100%;
   max-width: 380px;
-  background: var(--whisper-surface-container-lowest);
-  border-radius: var(--whisper-radius-xl);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  background: none;
   padding: var(--whisper-xl);
   position: relative;
   overflow: hidden;
-}
-
-.auth-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 200px;
-  height: 200px;
-  background: var(--whisper-primary-fixed);
-  opacity: 0.08;
-  border-radius: 50%;
-  filter: blur(80px);
-  pointer-events: none;
-  transform: translate(50%, -50%);
 }
 
 .card-header {
@@ -863,5 +850,16 @@ onUnmounted(() => {
   background: var(--whisper-surface-container-high);
   border-color: var(--whisper-primary);
   color: var(--whisper-primary);
+}
+
+/* Auth switch transition */
+.auth-switch-enter-active,
+.auth-switch-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.auth-switch-enter-from,
+.auth-switch-leave-to {
+  opacity: 0;
 }
 </style>

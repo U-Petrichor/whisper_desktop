@@ -1,642 +1,281 @@
-﻿<template>
-  <div v-if="isVisible" class="modal-overlay" @click="closeModal">
-    <div class="modal-content" @click.stop>
+<template>
+  <div v-if="visible" class="modal-overlay" @click.self="handleClose">
+    <div class="modal-container">
       <div class="modal-header">
         <h3>添加联系人</h3>
-        <button @click="closeModal" class="close-btn">×</button>
+        <button class="close-btn" @click="handleClose">✕</button>
       </div>
-      
       <div class="modal-body">
-        <!-- 搜索用户 -->
-        <div class="search-section">
-          <div class="search-input-group">
-            <input 
-              v-model="searchQuery" 
-              @keyup.enter="searchUsers"
-              type="text" 
-              placeholder="输入用户名或ID搜索用户"
-              class="search-input"
-            />
-            <button @click="searchUsers" class="search-btn" :disabled="!searchQuery.trim()">
-              🔍
+        <div class="input-group">
+          <input
+            v-model="searchQuery"
+            type="text"
+            class="whisper-input"
+            placeholder="输入用户名或ID搜索"
+            @keyup.enter="handleSearch"
+          />
+        </div>
+        <div v-if="loading" class="loading-spinner">
+          <div class="spinner"></div>
+          <span>搜索中...</span>
+        </div>
+        <div v-if="searchResult && !loading" class="search-result">
+          <div class="user-card">
+            <div class="avatar">{{ searchResult.username.charAt(0).toUpperCase() }}</div>
+            <div class="user-info">
+              <div class="username">{{ searchResult.username }}</div>
+              <div class="user-id">ID: {{ searchResult.userId }}</div>
+            </div>
+            <button
+              class="send-btn"
+              :disabled="sending"
+              @click="handleSendRequest"
+            >
+              {{ sending ? '发送中...' : '发送请求' }}
             </button>
           </div>
         </div>
-
-        <!-- 搜索结果 -->
-        <div v-if="searchResults.length > 0" class="search-results">
-          <h4>搜索结果</h4>
-          <div class="user-list">
-            <div 
-              v-for="user in searchResults" 
-              :key="user.id" 
-              class="user-item"
-              :class="{ 'already-friend': isAlreadyFriend(user.id) }"
-            >
-              <div class="user-avatar">
-                <img v-if="user.avatar" :src="user.avatar" :alt="user.username" />
-                <div v-else class="avatar-placeholder">
-                  {{ user.username && user.username.length > 0 ? user.username[0].toUpperCase() : '?' }}
-                </div>
-              </div>
-              <div class="user-info">
-                <div class="username">{{ user.username || '未知用户' }}</div>
-                <div class="user-id">ID: {{ user.id || 'N/A' }}</div>
-              </div>
-              <button 
-                v-if="!isAlreadyFriend(user.id) && !isRequestSent(user.id)"
-                @click="sendFriendRequest(user)"
-                class="add-btn"
-                :class="{ 'adding': isAddingUser(user.id) }"
-                :disabled="isAddingUser(user.id)"
-              >
-                <span v-if="!isAddingUser(user.id)" class="add-btn-content">
-                  <svg class="add-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M12 5v14M5 12h14"/>
-                  </svg>
-                  添加好友
-                </span>
-                <span v-else class="add-btn-content adding">
-                  <div class="adding-spinner"></div>
-                  发送中...
-                </span>
-              </button>
-              <span v-else-if="isRequestSent(user.id)" class="request-sent-label">申请已发送</span>
-              <span v-else class="already-friend-label">已是好友</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 搜索状态 -->
-        <div v-if="searching" class="search-status">
-          <div class="loading">
-            <div class="loading-spinner"></div>
-            <span>搜索中...</span>
-          </div>
-        </div>
-        
-        <div v-if="hasSearched && !searching && searchResults.length === 0" class="search-status">
-          <div class="no-results">
-            <div class="no-results-icon">😔</div>
-            <div class="no-results-text">您查找的用户不存在</div>
-            <div class="no-results-hint">请检查用户名是否正确</div>
-          </div>
+        <div v-if="error && !loading" class="error-message">
+          {{ error }}
         </div>
       </div>
     </div>
   </div>
 </template>
 
-<script>
-import { ref, computed, watch } from 'vue'
-import { hybridStore } from '../store/hybrid-store.ts'
-import { hybridApi } from '../api/hybrid-api.ts'
-import { extractPendingSentRequestUserIds } from '../utils/api-contract.ts'
-import { createLogger } from '../utils/logger'
-const log = createLogger('AddContact')
+<script setup lang="ts">
+import { ref } from 'vue'
+import { hybridApi } from '../api/hybrid-api'
 
-export default {
-  name: 'AddContactModal',
-  props: {
-    isVisible: {
-      type: Boolean,
-      default: false
-    }
-  },
-  emits: ['close', 'contact-added'],
-  setup(props, { emit }) {
-    const searchQuery = ref('')
-    const searchResults = ref([])
-    const searching = ref(false)
-    const addingUsers = ref([])
-    const hasSearched = ref(false)
-    const sentRequests = ref(new Set()) // 记录已发送申请的用户ID
+const props = defineProps<{
+  visible: boolean
+}>()
 
-    const normalizeUserId = (userId) => {
-      const numericId = Number(userId)
-      return Number.isFinite(numericId) ? numericId : null
-    }
-    
-    // 从本地存储加载已发送的好友申请状态
-    const loadSentRequestsFromStorage = () => {
-      try {
-        const currentUser = hybridStore.user
-        if (currentUser && currentUser.id) {
-          const storageKey = `sentFriendRequests_${currentUser.id}`
-          const stored = localStorage.getItem(storageKey)
-          if (stored) {
-            const requestIds = JSON.parse(stored)
-              .map(normalizeUserId)
-              .filter((id) => id !== null)
-            sentRequests.value = new Set(requestIds)
-          }
-        }
-      } catch (error) {
-        log.error('加载已发送好友申请状态失败:', error)
-      }
-    }
-    
-    // 保存已发送的好友申请状态到本地存储
-    const saveSentRequestsToStorage = () => {
-      try {
-        const currentUser = hybridStore.user
-        if (currentUser && currentUser.id) {
-          const storageKey = `sentFriendRequests_${currentUser.id}`
-          const requestIds = Array.from(sentRequests.value)
-          localStorage.setItem(storageKey, JSON.stringify(requestIds))
-        }
-      } catch (error) {
-        log.error('保存已发送好友申请状态失败:', error)
-      }
-    }
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'request-sent', userId: number): void
+}>()
 
-    const pruneSentRequestsForContacts = () => {
-      const friendIds = new Set(
-        contacts.value
-          .map((contact) => normalizeUserId(contact.id))
-          .filter((id) => id !== null)
-      )
-      if (friendIds.size === 0) return
+const searchQuery = ref('')
+const searchResult = ref<{ username: string; userId: number } | null>(null)
+const loading = ref(false)
+const sending = ref(false)
+const error = ref('')
 
-      let changed = false
-      const nextSentRequests = new Set(sentRequests.value)
-      for (const friendId of friendIds) {
-        if (nextSentRequests.delete(friendId)) changed = true
-      }
-
-      if (changed) {
-        sentRequests.value = nextSentRequests
-        saveSentRequestsToStorage()
-      }
-    }
-
-    const syncSentRequestsFromServer = async () => {
-      try {
-        const response = await hybridApi.getFriendRequests('sent')
-        sentRequests.value = extractPendingSentRequestUserIds(response)
-        pruneSentRequestsForContacts()
-        saveSentRequestsToStorage()
-      } catch (error) {
-        log.warn('同步已发送好友申请失败，使用本地缓存:', error)
-        loadSentRequestsFromStorage()
-        pruneSentRequestsForContacts()
-      }
-    }
-    
-    // 初始化时加载状态
-    loadSentRequestsFromStorage()
-    
-    const contacts = computed(() => hybridStore.contacts)
-    
-    const isAlreadyFriend = (userId) => {
-      const normalizedUserId = normalizeUserId(userId)
-      return normalizedUserId !== null && contacts.value.some(contact => normalizeUserId(contact.id) === normalizedUserId)
-    }
-    
-    const isRequestSent = (userId) => {
-      const normalizedUserId = normalizeUserId(userId)
-      return normalizedUserId !== null && sentRequests.value.has(normalizedUserId)
-    }
-
-    const isAddingUser = (userId) => {
-      const normalizedUserId = normalizeUserId(userId)
-      return normalizedUserId !== null && addingUsers.value.includes(normalizedUserId)
-    }
-    
-    const searchUsers = async () => {
-      const query = searchQuery.value.trim()
-      if (!query) {
-        searchResults.value = []
-        hasSearched.value = false
-        return
-      }
-      
-      searching.value = true
-      hasSearched.value = false
-      try {
-        const response = await hybridApi.searchUsers(query)
-        
-        // 检查响应数据结构
-        if (response.data && response.data.success && response.data.data) {
-          // 后端返回格式: {success: true, data: {items: [...], pagination: {...}}}
-          const userData = response.data.data;
-          if (userData.items && Array.isArray(userData.items)) {
-            searchResults.value = userData.items;
-          } else {
-            searchResults.value = [];
-          }
-        } else {
-          searchResults.value = [];
-        }
-        
-      } catch (error) {
-        log.error('搜索用户失败:', error)
-        
-        // 根据不同错误类型给出不同提示
-        if (error.response?.status === 401) {
-          alert('登录已过期，请重新登录')
-        } else if (error.response?.status === 404) {
-          // 404表示没有找到用户，这是正常情况
-          searchResults.value = []
-        } else if (error.response?.status >= 500) {
-          alert('服务器错误，请稍后重试')
-        } else {
-          alert('搜索失败，请检查网络连接')
-        }
-        
-        searchResults.value = []
-      } finally {
-        searching.value = false
-        hasSearched.value = true
-      }
-    }
-    
-    const sendFriendRequest = async (user) => {
-      const userId = normalizeUserId(user.id)
-      if (userId === null || addingUsers.value.includes(userId)) return
-      
-      addingUsers.value.push(userId)
-      try {
-        await hybridApi.sendFriendRequest(userId)
-        
-        // 标记为已发送申请
-        sentRequests.value.add(userId)
-        
-        // 保存到本地存储
-        saveSentRequestsToStorage()
-        
-        alert('好友申请已发送，等待对方确认')
-        
-      } catch (error) {
-        log.error('发送好友申请失败:', error)
-        
-        // 根据后端返回的错误信息显示具体提示
-        let errorMessage = '发送好友申请失败，请重试';
-        
-        if (error.response?.data?.detail) {
-          errorMessage = error.response.data.detail;
-        } else if (error.response?.status === 400) {
-          errorMessage = '不能向该用户发送好友申请';
-        } else if (error.response?.status === 404) {
-          errorMessage = '用户不存在';
-        } else if (error.response?.status === 401) {
-          errorMessage = '登录已过期，请重新登录';
-        } else if (error.response?.status >= 500) {
-          errorMessage = '服务器错误，请稍后重试';
-        }
-        
-        alert(errorMessage)
-      } finally {
-        addingUsers.value = addingUsers.value.filter(id => id !== userId)
-      }
-    }
-    
-    const closeModal = () => {
-      emit('close')
-      // 清空搜索状态
-      searchQuery.value = ''
-      searchResults.value = []
-      searching.value = false
-      addingUsers.value = []
-      hasSearched.value = false
-      // 不清空sentRequests，保持已发送申请的状态
-    }
-    
-    // 监听模态框显示状态，重新加载已发送申请状态
-    watch(() => props.isVisible, (newValue) => {
-      if (newValue) {
-        loadSentRequestsFromStorage()
-        syncSentRequestsFromServer()
-      }
-    })
-
-    watch(contacts, () => {
-      pruneSentRequestsForContacts()
-    }, { deep: true })
-    
-    return {
-      searchQuery,
-      searchResults,
-      searching,
-      addingUsers,
-      hasSearched,
-      isAlreadyFriend,
-      isRequestSent,
-      isAddingUser,
-      searchUsers,
-      sendFriendRequest,
-      closeModal
-    }
+async function handleSearch() {
+  if (!searchQuery.value.trim()) return
+  loading.value = true
+  error.value = ''
+  searchResult.value = null
+  try {
+    const result = await hybridApi.searchUser(searchQuery.value.trim())
+    searchResult.value = result
+  } catch (err: any) {
+    error.value = err.message || '搜索失败'
+  } finally {
+    loading.value = false
   }
+}
+
+async function handleSendRequest() {
+  if (!searchResult.value) return
+  sending.value = true
+  error.value = ''
+  try {
+    await hybridApi.sendFriendRequest(searchResult.value.userId)
+    emit('request-sent', searchResult.value.userId)
+    handleClose()
+  } catch (err: any) {
+    error.value = err.message || '发送请求失败'
+  } finally {
+    sending.value = false
+  }
+}
+
+function handleClose() {
+  searchQuery.value = ''
+  searchResult.value = null
+  error.value = ''
+  loading.value = false
+  sending.value = false
+  emit('close')
 }
 </script>
 
 <style scoped>
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  inset: 0;
+  background: rgba(14, 14, 14, 0.8);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
 }
 
-.modal-content {
-  background: white;
-  border-radius: 8px;
-  width: 90%;
-  max-width: 500px;
-  max-height: 80vh;
-  overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+.modal-container {
+  background: var(--whisper-surface-container-high);
+  border-radius: var(--whisper-radius-xl);
+  width: 420px;
+  max-width: 90vw;
+  border: 1px solid var(--whisper-outline-variant);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #eee;
-  background: #f8f9fa;
+  padding: var(--whisper-lg);
+  border-bottom: 1px solid var(--whisper-outline-variant);
 }
 
 .modal-header h3 {
   margin: 0;
-  color: #333;
+  font-size: var(--whisper-fs-headline-sm);
+  color: var(--whisper-on-surface);
+  font-weight: 500;
 }
 
 .close-btn {
   background: none;
   border: none;
-  font-size: 1.5rem;
+  color: var(--whisper-on-surface-variant);
+  font-size: 18px;
   cursor: pointer;
-  color: #666;
-  padding: 0;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  transition: background-color 0.2s;
+  padding: 4px 8px;
+  border-radius: var(--whisper-radius-full);
+  transition: background 0.2s, color 0.2s;
 }
 
 .close-btn:hover {
-  background: #e9ecef;
+  background: var(--whisper-surface-container-highest);
+  color: var(--whisper-on-surface);
 }
 
 .modal-body {
-  padding: 1.5rem;
-  max-height: 60vh;
-  overflow-y: auto;
+  padding: var(--whisper-lg);
 }
 
-.search-section {
-  margin-bottom: 1.5rem;
-}
-
-.search-input-group {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.search-input {
-  flex: 1;
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
-}
-
-.search-btn {
-  padding: 0.75rem 1rem;
-  background: #007bff;
-  color: white;
+.whisper-input {
+  width: 100%;
+  background: transparent;
   border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.2s;
+  border-bottom: 2px solid var(--whisper-outline-variant);
+  padding: var(--whisper-sm) 0;
+  font-size: var(--whisper-fs-body-lg);
+  color: var(--whisper-on-surface);
+  outline: none;
+  transition: border-color 0.3s;
+  font-family: inherit;
 }
 
-.search-btn:hover:not(:disabled) {
-  background: #0056b3;
+.whisper-input::placeholder {
+  color: var(--whisper-on-surface-variant);
+  opacity: 0.6;
 }
 
-.search-btn:disabled {
-  background: #ccc;
-  cursor: not-allowed;
+.whisper-input:focus {
+  border-bottom-color: var(--whisper-primary);
 }
 
-.search-results h4 {
-  margin: 0 0 1rem 0;
-  color: #333;
-  font-size: 1rem;
-}
-
-.user-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.user-item {
-  display: flex;
-  align-items: center;
-  padding: 0.75rem;
-  border: 1px solid #eee;
-  border-radius: 6px;
-  transition: background-color 0.2s;
-}
-
-.user-item:hover {
-  background: #f8f9fa;
-}
-
-.user-item.already-friend {
-  background: #f0f8f0;
-  border-color: #d4edda;
-}
-
-.user-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  margin-right: 0.75rem;
-  overflow: hidden;
-}
-
-.user-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.avatar-placeholder {
-  width: 100%;
-  height: 100%;
-  background: #007bff;
-  color: white;
+.loading-spinner {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
-  font-size: 1rem;
+  gap: var(--whisper-sm);
+  padding: var(--whisper-lg);
+  color: var(--whisper-on-surface-variant);
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--whisper-outline);
+  border-top-color: var(--whisper-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.search-result {
+  margin-top: var(--whisper-md);
+}
+
+.user-card {
+  display: flex;
+  align-items: center;
+  gap: var(--whisper-md);
+  padding: var(--whisper-md);
+  background: var(--whisper-surface-container);
+  border-radius: var(--whisper-radius-lg);
+  border: 1px solid var(--whisper-outline-variant);
+}
+
+.avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--whisper-radius-full);
+  background: var(--whisper-primary-fixed);
+  color: var(--whisper-on-primary-fixed);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--whisper-fs-title-md);
+  font-weight: 500;
+  flex-shrink: 0;
 }
 
 .user-info {
   flex: 1;
+  min-width: 0;
 }
 
 .username {
+  font-size: var(--whisper-fs-body-lg);
+  color: var(--whisper-on-surface);
   font-weight: 500;
-  color: #333;
-  margin-bottom: 0.25rem;
 }
 
 .user-id {
-  font-size: 0.875rem;
-  color: #666;
+  font-size: var(--whisper-fs-body-sm);
+  color: var(--whisper-on-surface-variant);
+  margin-top: 2px;
 }
 
-.add-btn {
-  padding: 0.6rem 1.2rem;
-  background: linear-gradient(135deg, #28a745, #20c997);
-  color: white;
+.send-btn {
+  background: var(--whisper-primary);
+  color: var(--whisper-on-primary);
   border: none;
-  border-radius: 8px;
+  padding: 8px 20px;
+  border-radius: var(--whisper-radius-full);
+  font-size: var(--whisper-fs-label-lg);
+  font-weight: 500;
   cursor: pointer;
-  font-size: 0.875rem;
-  font-weight: 500;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
-  position: relative;
-  overflow: hidden;
+  transition: opacity 0.2s;
+  font-family: inherit;
+  flex-shrink: 0;
 }
 
-.add-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #218838, #1ea085);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+.send-btn:hover:not(:disabled) {
+  opacity: 0.9;
 }
 
-.add-btn:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.add-btn:disabled {
-  background: #e9ecef;
-  color: #6c757d;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.add-btn.adding {
-  background: #6c757d;
+.send-btn:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-.add-btn-content {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.add-icon {
-  width: 16px;
-  height: 16px;
-  stroke-width: 2;
-}
-
-.adding-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid transparent;
-  border-top: 2px solid currentColor;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-.already-friend-label {
-  color: #28a745;
-  font-weight: 500;
-  padding: 0.5rem 1rem;
-  background: #d4edda;
-  border: 1px solid #c3e6cb;
-  border-radius: 4px;
-  font-size: 0.875rem;
-}
-
-.request-sent-label {
-  color: #856404;
-  font-weight: 500;
-  padding: 0.5rem 1rem;
-  background: #fff3cd;
-  border: 1px solid #ffeaa7;
-  border-radius: 4px;
-  font-size: 0.875rem;
-}
-
-.search-status {
-  text-align: center;
-  padding: 2rem;
-  color: #666;
-}
-
-.loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  color: #007bff;
-  font-weight: 500;
-}
-
-.loading-spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid #e3f2fd;
-  border-top: 2px solid #007bff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-.no-results {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.no-results-icon {
-  font-size: 3rem;
-  margin-bottom: 0.5rem;
-}
-
-.no-results-text {
-  font-size: 1.1rem;
-  font-weight: 500;
-  color: #495057;
-  margin-bottom: 0.25rem;
-}
-
-.no-results-hint {
-  font-size: 0.9rem;
-  color: #6c757d;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+.error-message {
+  margin-top: var(--whisper-md);
+  padding: var(--whisper-sm) var(--whisper-md);
+  background: var(--whisper-error-container);
+  color: var(--whisper-on-error-container);
+  border-radius: var(--whisper-radius-default);
+  font-size: var(--whisper-fs-body-sm);
 }
 </style>

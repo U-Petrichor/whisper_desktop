@@ -90,7 +90,7 @@
                 <div class="file-name">{{ message.fileName || message.file_name || (message.file && message.file.name) || '未知文件' }}</div>
                 <!-- 调试信息 -->
                 <div v-if="debugMode" class="debug-info">
-                  <small style="color: #666; font-size: 10px;">
+                  <small class="debug-small">
                     filePath: {{ message.filePath || message.file_path || 'null' }}<br>
                     fileName: {{ message.fileName || message.file_name || 'null' }}<br>
                     messageType: {{ message.messageType || 'null' }}
@@ -112,7 +112,7 @@
               <div class="file-name">{{ (message.file && message.file.name) || message.fileName || message.file_name || '未知文件' }}</div>
               <!-- 调试信息 -->
               <div v-if="debugMode" class="debug-info">
-                <small style="color: #666; font-size: 10px;">
+                <small class="debug-small">
                   filePath: {{ message.filePath || message.file_path || 'null' }}<br>
                   fileName: {{ message.fileName || message.file_name || 'null' }}<br>
                   type: {{ message.type || 'null' }}
@@ -2196,7 +2196,7 @@ function hideToast() {
 }
 
 .sending-indicator {
-  color: #ffc107;
+  color: var(--whisper-warning, #ffc107);
   font-size: 0.625rem;
   font-weight: 500;
 }
@@ -2227,7 +2227,7 @@ function hideToast() {
 
 .image-file-name {
   font-weight: 600;
-  color: #333;
+  color: var(--whisper-on-surface);
   margin-bottom: 0.25rem;
   white-space: nowrap;
   overflow: hidden;
@@ -2235,7 +2235,7 @@ function hideToast() {
 }
 
 .image-file-size {
-  color: #666;
+  color: var(--whisper-on-surface-variant);
   font-size: 0.8rem;
 }
 
@@ -2260,7 +2260,7 @@ function hideToast() {
 
 .file-icon .icon {
   font-size: 2rem;
-  color: #007bff;
+  color: var(--whisper-primary);
 }
 
 .file-info {
@@ -2278,21 +2278,21 @@ function hideToast() {
 
 .file-meta {
   font-size: 0.875rem;
-  color: #666;
+  color: var(--whisper-on-surface-variant);
 }
 
 .download-btn {
   padding: 0.5rem 1rem;
   border: none;
-  border-radius: 6px;
-  background: #007bff;
-  color: white;
+  border-radius: var(--whisper-radius-full);
+  background: var(--whisper-primary);
+  color: var(--whisper-on-primary);
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: opacity 0.2s;
 }
 
 .download-btn:hover {
-  background: #0056b3;
+  opacity: 0.9;
 }
 
 /* 文件消息样式 */
@@ -2301,18 +2301,18 @@ function hideToast() {
   align-items: center;
   gap: 1rem;
   padding: 1rem;
-  background: #f1f3f4;
+  background: var(--whisper-surface-container);
   border-radius: 8px;
   max-width: 300px;
 }
 
 .message.sent .message-file {
-  background: #e0efff;
+  background: var(--whisper-bubble-outgoing);
 }
 
 .file-icon-container {
   font-size: 2rem;
-  color: #007bff;
+  color: var(--whisper-primary);
 }
 
 .file-info {
@@ -2330,21 +2330,21 @@ function hideToast() {
 
 .file-meta {
   font-size: 0.875rem;
-  color: #666;
+  color: var(--whisper-on-surface-variant);
 }
 
 .download-btn {
   padding: 0.5rem 1rem;
   border: none;
-  border-radius: 6px;
-  background: #007bff;
-  color: white;
+  border-radius: var(--whisper-radius-full);
+  background: var(--whisper-primary);
+  color: var(--whisper-on-primary);
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: opacity 0.2s;
 }
 
 .download-btn:hover {
-  background: #0056b3;
+  opacity: 0.9;
 }
 
 /* 图片放大模态框样式 */
@@ -2354,17 +2354,17 @@ function hideToast() {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(14, 14, 14, 0.8);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 2000;
-  backdrop-filter: blur(5px);
+  backdrop-filter: blur(8px);
 }
 
 .image-modal {
-  background: white;
-  border-radius: 12px;
+  background: var(--whisper-surface-container-high);
+  border-radius: var(--whisper-radius-xl);
   max-width: 90vw;
   max-height: 90vh;
   display: flex;
@@ -2378,14 +2378,14 @@ function hideToast() {
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.5rem;
-  border-bottom: 1px solid #eee;
-  background: #f8f9fa;
+  border-bottom: 1px solid var(--whisper-outline-variant);
+  background: var(--whisper-surface-container-high);
 }
 
 .image-modal-header h3 {
   margin: 0;
   font-size: 1.1rem;
-  color: #333;
+  color: var(--whisper-on-surface);
   font-weight: 500;
 }
 
@@ -2409,21 +2409,21 @@ function hideToast() {
 .modal-steganography-hint {
   margin-top: 1rem;
   padding: 0.75rem 1rem;
-  background: linear-gradient(135deg, rgba(255, 193, 7, 0.1), rgba(255, 193, 7, 0.05));
-  border: 1px solid rgba(255, 193, 7, 0.3);
+  background: rgba(186, 202, 201, 0.08);
+  border: 1px solid var(--whisper-outline-variant);
   border-radius: 8px;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-size: 0.875rem;
-  color: #856404;
+  color: var(--whisper-primary);
 }
 
 .modal-extracted-message {
   margin-top: 1rem;
   padding: 1rem;
-  background: linear-gradient(135deg, rgba(40, 167, 69, 0.1), rgba(40, 167, 69, 0.05));
-  border: 1px solid rgba(40, 167, 69, 0.3);
+  background: rgba(186, 202, 201, 0.06);
+  border: 1px solid var(--whisper-outline-variant);
   border-radius: 8px;
   width: 100%;
   max-width: 500px;
@@ -2431,8 +2431,8 @@ function hideToast() {
 
 .image-modal-footer {
   padding: 1rem 1.5rem;
-  border-top: 1px solid #eee;
-  background: #f8f9fa;
+  border-top: 1px solid var(--whisper-outline-variant);
+  background: var(--whisper-surface-container-high);
   text-align: center;
 }
 
@@ -2441,7 +2441,7 @@ function hideToast() {
   flex-direction: column;
   gap: 0.25rem;
   font-size: 0.875rem;
-  color: #666;
+  color: var(--whisper-on-surface-variant);
 }
 
 .image-time {
@@ -2450,11 +2450,11 @@ function hideToast() {
 
 .image-name {
   font-weight: 600;
-  color: #333;
+  color: var(--whisper-on-surface);
 }
 
 .image-size {
-  color: #888;
+  color: var(--whisper-on-surface-variant);
   font-size: 0.8rem;
 }
 
@@ -2463,9 +2463,9 @@ function hideToast() {
   align-items: center;
   gap: 0.5rem;
   padding: 1rem;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--whisper-surface-container);
   border-radius: 0.5rem;
-  color: #666;
+  color: var(--whisper-on-surface-variant);
 }
 
 .image-icon {
@@ -2484,20 +2484,17 @@ function hideToast() {
   align-items: center;
   justify-content: center;
   min-height: 200px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(248, 250, 255, 0.8) 100%);
+  background: var(--whisper-surface-container);
   border-radius: 20px;
   margin: 2rem;
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(102, 126, 234, 0.1);
+  border: 1px solid var(--whisper-outline-variant);
 }
 
 .empty-icon {
   font-size: 4rem;
   margin-bottom: 1rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--whisper-primary);
   animation: emptyIconFloat 3s ease-in-out infinite;
 }
 
@@ -2508,13 +2505,9 @@ function hideToast() {
 
 .empty-messages p {
   font-size: 1.1rem;
-  color: #5a6c7d;
+  color: var(--whisper-on-surface-variant);
   font-weight: 500;
   margin: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
 .message-input-area {
@@ -2532,16 +2525,17 @@ function hideToast() {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(14, 14, 14, 0.8);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  backdrop-filter: blur(8px);
 }
 
 .history-modal {
-  background: white;
-  border-radius: 12px;
+  background: var(--whisper-surface-container-high);
+  border-radius: var(--whisper-radius-xl);
   width: 90%;
   max-width: 600px;
   max-height: 80vh;
@@ -2555,14 +2549,14 @@ function hideToast() {
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.5rem;
-  border-bottom: 1px solid #eee;
-  background: #f8f9fa;
+  border-bottom: 1px solid var(--whisper-outline-variant);
+  background: var(--whisper-surface-container-high);
   border-radius: 12px 12px 0 0;
 }
 
 .history-header h3 {
   margin: 0;
-  color: #333;
+  color: var(--whisper-on-surface);
   font-size: 1.2rem;
 }
 
@@ -2571,7 +2565,7 @@ function hideToast() {
   border: none;
   font-size: 1.5rem;
   cursor: pointer;
-  color: #666;
+  color: var(--whisper-on-surface-variant);
   width: 30px;
   height: 30px;
   border-radius: 50%;
@@ -2582,8 +2576,8 @@ function hideToast() {
 }
 
 .close-btn:hover {
-  background: #e9ecef;
-  color: #333;
+  background: var(--whisper-surface-container-highest);
+  color: var(--whisper-on-surface);
 }
 
 .history-content {
@@ -2599,14 +2593,14 @@ function hideToast() {
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  color: #666;
+  color: var(--whisper-on-surface-variant);
 }
 
 .loading-spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid #007bff;
+  border: 3px solid var(--whisper-outline-variant);
+  border-top: 3px solid var(--whisper-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 1rem;
@@ -2620,23 +2614,24 @@ function hideToast() {
 .search-container {
   position: relative;
   padding: 1rem 1.5rem;
-  border-bottom: 1px solid #eee;
-  background: #fafafa;
+  border-bottom: 1px solid var(--whisper-outline-variant);
+  background: var(--whisper-surface-container-high);
 }
 
 .search-input {
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  border: none;
+  border-bottom: 1px solid var(--whisper-outline-variant);
+  border-radius: 0;
   font-size: 0.875rem;
   outline: none;
   transition: border-color 0.2s ease;
 }
 
 .search-input:focus {
-  border-color: #007bff;
-  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+  border-bottom-color: var(--whisper-primary);
+  box-shadow: none;
 }
 
 .clear-search-btn {
@@ -2647,7 +2642,7 @@ function hideToast() {
   background: none;
   border: none;
   font-size: 1.2rem;
-  color: #666;
+  color: var(--whisper-on-surface-variant);
   cursor: pointer;
   width: 24px;
   height: 24px;
@@ -2659,8 +2654,8 @@ function hideToast() {
 }
 
 .clear-search-btn:hover {
-  background: #e9ecef;
-  color: #333;
+  background: var(--whisper-surface-container-highest);
+  color: var(--whisper-on-surface);
 }
 
 .no-history,
@@ -2669,7 +2664,7 @@ function hideToast() {
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  color: #666;
+  color: var(--whisper-on-surface-variant);
   font-style: italic;
 }
 
@@ -2697,13 +2692,13 @@ function hideToast() {
   max-width: 70%;
   padding: 0.75rem 1rem;
   border-radius: 12px;
-  background: #f1f3f4;
+  background: var(--whisper-surface-container);
   position: relative;
 }
 
 .history-message.sent .message-content {
-  background: #007bff;
-  color: white;
+  background: var(--whisper-bubble-outgoing);
+  color: var(--whisper-on-surface);
 }
 
 .history-message .message-text {
@@ -2726,21 +2721,21 @@ function hideToast() {
   align-items: center;
   margin-top: 15px;
   padding: 10px;
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid var(--whisper-outline-variant);
 }
 
 .status-info {
   font-size: 14px;
-  color: #666;
+  color: var(--whisper-on-surface-variant);
   text-align: center;
 }
 
 .loading-more {
   text-align: center;
   padding: 10px;
-  color: #666;
+  color: var(--whisper-on-surface-variant);
   font-size: 14px;
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid var(--whisper-outline-variant);
 }
 
 .loading-more p {
@@ -2751,7 +2746,7 @@ function hideToast() {
 .decrypt-tooltip {
   position: fixed;
   z-index: 9999;
-  background: rgba(0, 0, 0, 0.9);
+  background: var(--whisper-surface-container-high);
   border-radius: 12px;
   padding: 16px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
@@ -2759,7 +2754,7 @@ function hideToast() {
   pointer-events: auto;
   min-width: 160px;
   backdrop-filter: blur(4px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--whisper-outline-variant);
 }
 
 .tooltip-content {
@@ -2770,7 +2765,7 @@ function hideToast() {
 }
 
 .tooltip-text {
-  color: white;
+  color: var(--whisper-on-surface);
   font-size: 14px;
   white-space: nowrap;
   margin-bottom: 4px;
@@ -2784,7 +2779,7 @@ function hideToast() {
 .decrypt-btn, .cancel-btn {
   padding: 10px 16px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--whisper-radius-full);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -2794,21 +2789,22 @@ function hideToast() {
 }
 
 .decrypt-btn {
-  background: #007bff;
-  color: white;
+  background: var(--whisper-primary);
+  color: var(--whisper-on-primary);
 }
 
 .decrypt-btn:hover {
-  background: #0056b3;
+  opacity: 0.9;
 }
 
 .cancel-btn {
-  background: #6c757d;
-  color: white;
+  background: transparent;
+  color: var(--whisper-on-surface-variant);
+  border: 1px solid var(--whisper-outline-variant);
 }
 
 .cancel-btn:hover {
-  background: #545b62;
+  background: var(--whisper-surface-container-highest);
 }
 
 @keyframes fadeIn {
@@ -2826,13 +2822,13 @@ function hideToast() {
 .image-context-menu {
   position: fixed;
   z-index: 9999;
-  background: white;
-  border-radius: 8px;
+  background: var(--whisper-surface-container-high);
+  border-radius: var(--whisper-radius-lg);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   animation: fadeIn 0.2s ease-out;
   pointer-events: auto;
   min-width: 140px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--whisper-outline-variant);
   overflow: hidden;
 }
 
@@ -2846,14 +2842,14 @@ function hideToast() {
   align-items: center;
   padding: 12px 16px;
   border: none;
-  background: white;
-  color: #333;
+  background: var(--whisper-surface-container-high);
+  color: var(--whisper-on-surface);
   font-size: 14px;
   cursor: pointer;
   transition: background-color 0.2s;
   text-align: left;
   gap: 8px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--whisper-outline-variant);
 }
 
 .menu-item:last-child {
@@ -2861,11 +2857,11 @@ function hideToast() {
 }
 
 .menu-item:hover {
-  background-color: #f5f5f5;
+  background-color: var(--whisper-surface-container-highest);
 }
 
 .menu-item:active {
-  background-color: #e0e0e0;
+  background-color: var(--whisper-surface-container-high);
 }
 
 /* 图标样式 */
@@ -2898,10 +2894,10 @@ function hideToast() {
 .message-steganography {
   position: relative;
   max-width: 300px;
-  border: 2px solid #007bff;
-  border-radius: 12px;
+  border: 2px solid var(--whisper-primary);
+  border-radius: var(--whisper-radius-lg);
   padding: 8px;
-  background: linear-gradient(135deg, rgba(0, 123, 255, 0.1), rgba(0, 123, 255, 0.05));
+  background: rgba(186, 202, 201, 0.08);
 }
 
 .steganography-content {
@@ -2920,9 +2916,9 @@ function hideToast() {
   align-items: center;
   gap: 0.5rem;
   padding: 1rem;
-  background: #f0f0f0;
-  border-radius: 8px;
-  color: #666;
+  background: var(--whisper-surface-container);
+  border-radius: var(--whisper-radius-lg);
+  color: var(--whisper-on-surface-variant);
 }
 
 .steganography-icon {
@@ -2939,10 +2935,10 @@ function hideToast() {
   gap: 0.5rem;
   margin-top: 0.5rem;
   padding: 0.5rem;
-  background: rgba(0, 123, 255, 0.1);
+  background: rgba(186, 202, 201, 0.08);
   border-radius: 6px;
   font-size: 0.85rem;
-  color: #007bff;
+  color: var(--whisper-primary);
 }
 
 .hint-icon {
@@ -2956,8 +2952,8 @@ function hideToast() {
 .extracted-message {
   margin-top: 0.75rem;
   padding: 0.75rem;
-  background: rgba(40, 167, 69, 0.1);
-  border: 1px solid rgba(40, 167, 69, 0.3);
+  background: rgba(186, 202, 201, 0.06);
+  border: 1px solid var(--whisper-outline-variant);
   border-radius: 8px;
 }
 
@@ -2967,7 +2963,7 @@ function hideToast() {
   gap: 0.5rem;
   margin-bottom: 0.5rem;
   font-size: 0.9rem;
-  color: #28a745;
+  color: var(--whisper-primary);
   font-weight: 600;
 }
 
@@ -2981,29 +2977,29 @@ function hideToast() {
 
 .extracted-content {
   padding: 0.5rem;
-  background: white;
+  background: var(--whisper-surface-container);
   border-radius: 6px;
-  border: 1px solid rgba(40, 167, 69, 0.2);
+  border: 1px solid var(--whisper-outline-variant);
   font-size: 0.9rem;
   line-height: 1.4;
-  color: #333;
+  color: var(--whisper-on-surface);
   word-wrap: break-word;
 }
 
 /* 错误提示样式 */
 .extracted-error {
-  background: rgba(220, 53, 69, 0.1) !important;
-  border: 1px solid rgba(220, 53, 69, 0.3) !important;
+  background: var(--whisper-error-container) !important;
+  border: 1px solid var(--whisper-error) !important;
 }
 
 .extracted-error .extracted-header {
-  color: #dc3545 !important;
+  color: var(--whisper-error) !important;
 }
 
 .extracted-error .extracted-content {
-  background: rgba(248, 249, 250, 1) !important;
-  border: 1px solid rgba(220, 53, 69, 0.2) !important;
-  color: #dc3545 !important;
+  background: var(--whisper-error-container) !important;
+  border: 1px solid var(--whisper-error) !important;
+  color: var(--whisper-error) !important;
   font-style: italic;
 }
 
@@ -3018,15 +3014,15 @@ function hideToast() {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  background: linear-gradient(135deg, rgba(0, 123, 255, 0.1), rgba(0, 123, 255, 0.05));
-  border: 1px solid rgba(0, 123, 255, 0.2);
+  background: rgba(186, 202, 201, 0.08);
+  border: 1px solid var(--whisper-outline-variant);
   border-radius: 12px;
   transition: all 0.2s ease;
 }
 
 .voice-call-content:hover {
-  background: linear-gradient(135deg, rgba(0, 123, 255, 0.15), rgba(0, 123, 255, 0.08));
-  border-color: rgba(0, 123, 255, 0.3);
+  background: rgba(186, 202, 201, 0.12);
+  border-color: var(--whisper-primary);
 }
 
 .voice-call-icon {
@@ -3036,7 +3032,7 @@ function hideToast() {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: rgba(0, 123, 255, 0.1);
+  background: rgba(186, 202, 201, 0.12);
 }
 
 .call-icon {
@@ -3047,15 +3043,15 @@ function hideToast() {
 }
 
 .call-icon.completed {
-  color: #28a745;
+  color: var(--whisper-primary);
 }
 
 .call-icon.rejected {
-  color: #dc3545;
+  color: var(--whisper-error);
 }
 
 .call-icon.missed {
-  color: #ffc107;
+  color: var(--whisper-warning, #ffc107);
 }
 
 .voice-call-info {
@@ -3068,31 +3064,32 @@ function hideToast() {
 .call-status {
   font-weight: 600;
   font-size: 14px;
-  color: #333;
+  color: var(--whisper-on-surface);
 }
 
 .call-duration {
   font-size: 12px;
-  color: #666;
+  color: var(--whisper-on-surface-variant);
   font-weight: 500;
 }
 
 /* 发送的通话记录样式调整 */
 .message.sent .voice-call-content {
-  background: linear-gradient(135deg, rgba(0, 123, 255, 0.2), rgba(0, 123, 255, 0.1));
-  border-color: rgba(0, 123, 255, 0.3);
+  background: rgba(186, 202, 201, 0.15);
+  border-color: rgba(186, 202, 201, 0.08);
 }
 
 .message.sent .voice-call-content:hover {
-  background: linear-gradient(135deg, rgba(0, 123, 255, 0.25), rgba(0, 123, 255, 0.15));
+  background: rgba(186, 202, 201, 0.08);
+  border-color: var(--whisper-primary);
 }
 
 .message.sent .call-status {
-  color: #fff;
+  color: var(--whisper-on-surface);
 }
 
 .message.sent .call-duration {
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--whisper-on-surface-variant);
 }
 
 /* 阅后即焚倒计时样式 */
@@ -3101,13 +3098,13 @@ function hideToast() {
   align-items: center;
   gap: 2px;
   padding: 2px 6px;
-  background: linear-gradient(135deg, #ff6b6b, #ff8e8e);
-  color: white;
-  border-radius: 10px;
+  background: var(--whisper-error);
+  color: var(--whisper-on-error);
+  border-radius: var(--whisper-radius-full);
   font-size: 0.7rem;
   font-weight: 600;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-  box-shadow: 0 1px 3px rgba(255, 107, 107, 0.3);
+  text-shadow: none;
+  box-shadow: none;
   animation: burnAfterPulse 2s infinite;
 }
 
@@ -3116,23 +3113,23 @@ function hideToast() {
   align-items: center;
   gap: 2px;
   padding: 2px 6px;
-  background: linear-gradient(135deg, #6c757d, #868e96);
-  color: white;
+  background: var(--whisper-surface-container-high);
+  color: var(--whisper-on-surface-variant);
   border-radius: 10px;
   font-size: 0.7rem;
   font-weight: 600;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  text-shadow: none;
   opacity: 0.7;
 }
 
 @keyframes burnAfterPulse {
   0%, 100% {
     transform: scale(1);
-    box-shadow: 0 1px 3px rgba(255, 107, 107, 0.3);
+    box-shadow: 0 0 4px rgba(186, 202, 201, 0.3);
   }
   50% {
     transform: scale(1.05);
-    box-shadow: 0 2px 6px rgba(255, 107, 107, 0.5);
+    box-shadow: 0 0 4px rgba(186, 202, 201, 0.3);
   }
 }
 
@@ -3157,9 +3154,9 @@ function hideToast() {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background: var(--whisper-surface-container-high);
+  border-radius: var(--whisper-radius-lg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   border-left: 4px solid;
   min-width: 300px;
   max-width: 400px;
@@ -3174,11 +3171,11 @@ function hideToast() {
 }
 
 .toast.success {
-  border-left-color: #28a745;
+  border-left-color: var(--whisper-primary);
 }
 
 .toast.error {
-  border-left-color: #dc3545;
+  border-left-color: var(--whisper-error);
 }
 
 .toast-icon {
@@ -3191,18 +3188,18 @@ function hideToast() {
 }
 
 .toast.success .toast-icon {
-  color: #28a745;
+  color: var(--whisper-primary);
 }
 
 .toast.error .toast-icon {
-  color: #dc3545;
+  color: var(--whisper-error);
 }
 
 .toast-message {
   flex: 1;
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: var(--whisper-on-surface);
   line-height: 1.4;
 }
 
@@ -3215,15 +3212,15 @@ function hideToast() {
   background: none;
   border: none;
   cursor: pointer;
-  color: #666;
-  border-radius: 4px;
+  color: var(--whisper-on-surface-variant);
+  border-radius: var(--whisper-radius-default);
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
 .toast-close:hover {
-  background: rgba(0, 0, 0, 0.1);
-  color: #333;
+  background: var(--whisper-surface-container-highest);
+  color: var(--whisper-on-surface);
 }
 
 @keyframes toastSlideIn {
@@ -3235,6 +3232,11 @@ function hideToast() {
     transform: translateX(0);
     opacity: 1;
   }
+}
+
+.debug-small {
+  color: var(--whisper-on-surface-variant);
+  font-size: 10px;
 }
 
 </style>

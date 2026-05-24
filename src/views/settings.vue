@@ -214,16 +214,19 @@ function goBack() {
 <style scoped>
 .settings-page {
   min-height: 100vh;
-  background: #f0f2f5;
-  padding: 2rem;
+  background: var(--whisper-bg);
+  padding: var(--whisper-lg);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
 }
 
 .settings-container {
   max-width: 800px;
-  margin: 0 auto;
-  background: white;
-  border-radius: 1rem;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  width: 100%;
+  background: var(--whisper-surface-container);
+  border-radius: var(--whisper-radius-xl);
+  border: 1px solid var(--whisper-outline-variant);
   overflow: hidden;
 }
 
@@ -231,38 +234,44 @@ function goBack() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 2rem;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: white;
+  padding: var(--whisper-lg);
+  background: var(--whisper-surface-container-high);
+  border-bottom: 1px solid var(--whisper-outline-variant);
 }
 
 .settings-header h1 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: var(--whisper-fs-headline-sm);
+  color: var(--whisper-on-surface);
+  font-weight: 500;
 }
 
 .back-btn {
-  padding: 0.5rem 1rem;
-  background: rgba(255,255,255,0.2);
-  color: white;
-  border: 1px solid rgba(255,255,255,0.3);
-  border-radius: 0.25rem;
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--whisper-on-surface-variant);
+  border: 1px solid var(--whisper-outline-variant);
+  border-radius: var(--whisper-radius-full);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  font-size: var(--whisper-fs-label-lg);
+  font-family: inherit;
 }
 
 .back-btn:hover {
-  background: rgba(255,255,255,0.3);
+  background: var(--whisper-surface-container-high);
+  border-color: var(--whisper-primary);
+  color: var(--whisper-primary);
 }
 
 .settings-content {
-  padding: 2rem;
+  padding: var(--whisper-lg);
 }
 
 .settings-section {
-  margin-bottom: 2rem;
-  padding-bottom: 2rem;
-  border-bottom: 1px solid #eee;
+  margin-bottom: var(--whisper-lg);
+  padding-bottom: var(--whisper-lg);
+  border-bottom: 1px solid var(--whisper-outline-variant);
 }
 
 .settings-section:last-child {
@@ -271,121 +280,120 @@ function goBack() {
 }
 
 .settings-section h2 {
-  margin: 0 0 1.5rem 0;
-  font-size: 1.25rem;
-  color: #333;
+  margin: 0 0 var(--whisper-md) 0;
+  font-size: var(--whisper-fs-headline-sm);
+  color: var(--whisper-on-surface);
+  font-weight: 500;
 }
 
 .setting-item {
-  margin-bottom: 1rem;
+  margin-bottom: var(--whisper-md);
 }
 
 .setting-item label {
   display: block;
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--whisper-sm);
   font-weight: 500;
-  color: #333;
+  color: var(--whisper-on-surface);
+  font-size: var(--whisper-fs-body-md);
 }
 
 .checkbox-label {
   display: flex !important;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--whisper-sm);
   cursor: pointer;
+  color: var(--whisper-on-surface);
+}
+
+.checkbox-label input[type="checkbox"] {
+  accent-color: var(--whisper-primary);
 }
 
 .setting-input {
   width: 100%;
   max-width: 300px;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 0.25rem;
-  font-size: 0.875rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--whisper-outline-variant);
+  padding: var(--whisper-sm) 0;
+  font-size: var(--whisper-fs-body-lg);
+  color: var(--whisper-on-surface);
+  outline: none;
+  transition: border-color 0.3s;
+  font-family: inherit;
 }
 
 .setting-input:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+  border-bottom: 2px solid var(--whisper-primary);
 }
 
 .action-btn {
-  padding: 0.5rem 1rem;
-  background: #f8f9fa;
-  color: #333;
-  border: 1px solid #ddd;
-  border-radius: 0.25rem;
+  padding: 8px 16px;
+  background: var(--whisper-surface-container);
+  color: var(--whisper-on-surface);
+  border: 1px solid var(--whisper-outline-variant);
+  border-radius: var(--whisper-radius-default);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  font-size: var(--whisper-fs-label-lg);
+  font-family: inherit;
 }
 
 .action-btn:hover {
-  background: #e9ecef;
+  background: var(--whisper-surface-container-high);
+  border-color: var(--whisper-primary);
 }
 
 .steganography-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: var(--whisper-primary);
+  color: var(--whisper-on-primary);
   border: none;
+  border-radius: var(--whisper-radius-full);
   font-weight: 500;
 }
 
 .steganography-btn:hover {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  opacity: 0.9;
 }
 
 .settings-actions {
   display: flex;
-  gap: 1rem;
-  margin-top: 2rem;
-  padding-top: 2rem;
-  border-top: 1px solid #eee;
+  gap: var(--whisper-md);
+  margin-top: var(--whisper-lg);
+  padding-top: var(--whisper-lg);
+  border-top: 1px solid var(--whisper-outline-variant);
 }
 
 .save-btn, .reset-btn {
-  padding: 0.75rem 1.5rem;
+  padding: 10px 24px;
   border: none;
-  border-radius: 0.5rem;
+  border-radius: var(--whisper-radius-full);
   font-weight: 500;
+  font-size: var(--whisper-fs-label-lg);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: opacity 0.2s;
+  font-family: inherit;
 }
 
 .save-btn {
-  background: #28a745;
-  color: white;
+  background: var(--whisper-primary);
+  color: var(--whisper-on-primary);
 }
 
 .save-btn:hover {
-  background: #218838;
+  opacity: 0.9;
 }
 
 .reset-btn {
-  background: #6c757d;
-  color: white;
+  background: transparent;
+  color: var(--whisper-on-surface-variant);
+  border: 1px solid var(--whisper-outline-variant);
 }
 
 .reset-btn:hover {
-  background: #5a6268;
-}
-
-@media (max-width: 768px) {
-  .settings-page {
-    padding: 1rem;
-  }
-  
-  .settings-header {
-    padding: 1.5rem;
-  }
-  
-  .settings-content {
-    padding: 1.5rem;
-  }
-  
-  .settings-actions {
-    flex-direction: column;
-  }
+  background: var(--whisper-surface-container-high);
+  border-color: var(--whisper-primary);
+  color: var(--whisper-primary);
 }
 </style>

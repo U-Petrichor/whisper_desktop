@@ -1,6 +1,6 @@
 import { reactive, computed } from 'vue';
 import CryptoJS from 'crypto-js';
-import { getChinaTimeISO, generateTempMessageId } from '../utils/timeUtils.ts';
+import { generateTempMessageId } from '../utils/timeUtils.ts';
 import { createLogger } from '../utils/logger.ts';
 const log = createLogger('HybridStore');
 
@@ -273,8 +273,26 @@ export const hybridStore = {
     }
   },
 
+  // 统一清洗消息的 timestamp 为 number (epoch ms)
+  cleanTimestamp(message) {
+    if (!message.timestamp) {
+      message.timestamp = Date.now();
+      return message;
+    }
+    if (typeof message.timestamp === 'number') return message;
+    // string: 可能是数字字符串或旧 ISO 字符串
+    const parsed = Number(message.timestamp);
+    if (!Number.isNaN(parsed)) {
+      message.timestamp = parsed;
+    } else {
+      message.timestamp = new Date(message.timestamp).getTime();
+    }
+    return message;
+  },
+
   // 添加消息到对话
   addMessage(userId, message) {
+    this.cleanTimestamp(message);
     if (!state.conversations[userId]) {
       state.conversations[userId] = {
         messages: [],
@@ -293,7 +311,7 @@ export const hybridStore = {
       const dedupIndex = conversation.messages.findIndex(m =>
         String(m.from) === String(message.from)
         && String(m.to) === String(message.to)
-        && m.timestamp === message.timestamp
+        && String(m.timestamp) === String(message.timestamp)
       );
       if (dedupIndex !== -1) {
         conversation.messages.splice(dedupIndex, 1, { ...message });
@@ -303,7 +321,7 @@ export const hybridStore = {
     }
 
     // 按时间戳重新排序所有消息，确保正确的时间顺序
-    conversation.messages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    conversation.messages.sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
 
     // 更新最后一条消息（按时间戳排序后的最后一条）
     if (conversation.messages.length > 0) {
@@ -344,6 +362,7 @@ export const hybridStore = {
     });
     // 处理消息，特别是语音通话记录，并保留已解密的状态
     const processedMessages = messages.map(message => {
+      this.cleanTimestamp(message);
       // 查找现有消息中是否有相同ID的消息
       const existingMessage = message.id ? existingMessagesMap.get(message.id) : null;
       
@@ -373,7 +392,7 @@ export const hybridStore = {
     });
     
     // 按时间戳排序消息
-    const sortedMessages = processedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    const sortedMessages = processedMessages.sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
     
     state.conversations[userId].messages = sortedMessages;
 
@@ -581,7 +600,7 @@ export const hybridStore = {
       from: message.from,
       to: state.user?.id,
       content: message.content,
-      timestamp: message.timestamp || getChinaTimeISO(),
+      timestamp: message.timestamp || Date.now(),
       method: message.method || 'Server',
       encrypted: false,
       // 添加图片消息支持

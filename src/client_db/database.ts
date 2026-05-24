@@ -1,6 +1,5 @@
 import Database from '@tauri-apps/plugin-sql';
 import CryptoJS from 'crypto-js';
-import { getChinaTimeISO } from '../utils/timeUtils.ts';
 import { createLogger } from '../utils/logger.ts';
 const log = createLogger('Database');
 
@@ -310,12 +309,18 @@ function mapUserKeyRow(row: UserKeyRow | undefined | null): UserKeyRecord | null
 }
 
 function mapMessageRow(row: MessageRow): StoredMessage {
+  // timestamp 列是 TEXT，可能存着数字字符串或旧 ISO 字符串，统一转为 number
+  let ts: any = row.timestamp;
+  if (typeof ts === 'string') {
+    const parsed = Number(ts);
+    ts = Number.isNaN(parsed) ? new Date(ts).getTime() : parsed;
+  }
   return {
     id: row.id,
     from: row.sender_id,
     to: row.receiver_id,
     content: row.content,
-    timestamp: row.timestamp,
+    timestamp: ts,
     method: row.method,
     encrypted: fromDbBoolean(row.encrypted),
     isRead: fromDbBoolean(row.is_read),
@@ -402,7 +407,7 @@ async function upsertConversation(userId: number, lastMessage: string, timestamp
 }
 
 async function generateUserKeyPair(userId: number) {
-  const createdAt = getChinaTimeISO();
+  const createdAt = Date.now();
   const keyPair = {
     publicKey: `pub_${userId}_${Date.now()}`,
     privateKey: `priv_${userId}_${Date.now()}`
@@ -496,7 +501,7 @@ export const addMessage = async (message: MessageInput) => {
     const storedContent = message.encrypted && symmetricKey
       ? encryptContent(message.content, symmetricKey)
       : message.content;
-    const timestamp = message.timestamp || getChinaTimeISO();
+    const timestamp = message.timestamp || Date.now();
 
     const result = await execute(
       `
@@ -702,8 +707,8 @@ export const storeUserKeys = async (keyData: Partial<UserKeyRecord>) => {
       publicKey,
       privateKey
     });
-    const createdAt = existingKeys?.createdAt || keyData.createdAt || getChinaTimeISO();
-    const updatedAt = keyData.updatedAt || getChinaTimeISO();
+    const createdAt = existingKeys?.createdAt || keyData.createdAt || Date.now();
+    const updatedAt = keyData.updatedAt || Date.now();
 
     await execute(
       `

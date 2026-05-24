@@ -10,6 +10,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
+import { createLogger } from './utils/logger';
+const log = createLogger('App');
 
 // 💡 预留提示：如果你之后需要让前端调用 Python 的加解密引擎，
 // 就可以在这里或者其他组件里引入下面这行 Tauri 的原生 API。
@@ -23,13 +25,24 @@ onMounted(async () => {
     await new Promise(resolve => setTimeout(resolve, 500));
     loading.value = false;
   } catch (error) {
-    console.error('应用初始化失败:', error);
+    log.error('应用初始化失败:', error);
     loading.value = false;
   }
 });
 </script>
 
 <style>
+:root {
+  font-family: var(--whisper-font-family);
+  font-size: var(--whisper-fs-body-md);
+  line-height: var(--whisper-lh-body-md);
+  color: var(--whisper-on-surface);
+  background-color: var(--whisper-bg);
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -37,16 +50,20 @@ onMounted(async () => {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  background: transparent;
+}
+
+html {
+  background: transparent;
+  border-radius: 12px;
 }
 
 #app {
   height: 100vh;
   overflow: hidden;
+  border-radius: 12px;
+  background: var(--whisper-bg);
 }
 
 .loading-screen {
@@ -55,65 +72,57 @@ body {
   align-items: center;
   justify-content: center;
   height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: var(--whisper-bg);
+  color: var(--whisper-on-surface-variant);
 }
 
 .loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid rgba(255, 255, 255, 0.3);
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--whisper-outline-variant);
   border-radius: 50%;
-  border-top-color: white;
-  animation: spin 1s ease-in-out infinite;
-  margin-bottom: 1rem;
+  border-top-color: var(--whisper-primary);
+  animation: spin 0.8s linear infinite;
+  margin-bottom: var(--whisper-md);
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-/* 全局样式 */
-.btn {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: var(--whisper-scrollbar-width);
 }
 
-.btn-primary {
-  background: #007bff;
-  color: white;
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.btn-primary:hover {
-  background: #0056b3;
+::-webkit-scrollbar-thumb {
+  background: var(--whisper-scrollbar-thumb);
+  border-radius: var(--whisper-radius-full);
 }
 
-.btn-secondary {
-  background: #6c757d;
-  color: white;
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(115, 120, 116, 0.5);
 }
 
-.btn-secondary:hover {
-  background: #545b62;
+/* Material Symbols config */
+.material-symbols-outlined {
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 300,
+    'GRAD' 0,
+    'opsz' 24;
+  user-select: none;
 }
 
-.form-input {
-  width: 100%;
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 0.375rem;
-  font-size: 1rem;
-  transition: border-color 0.2s;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 0.125rem rgba(0, 123, 255, 0.25);
+.material-symbols-outlined.filled {
+  font-variation-settings:
+    'FILL' 1,
+    'wght' 300,
+    'GRAD' 0,
+    'opsz' 24;
 }
 </style>

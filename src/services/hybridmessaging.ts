@@ -5,9 +5,15 @@ import { extractPayload, extractWsPayload } from '../utils/api-contract.ts';
 import {
   parseSignalEnvelope,
   serializeSignalEnvelope,
-  SignalHttpRuntime,
+  SignalTauriRuntime,
   type SignalEnvelope,
+  type SignalAccountResult,
 } from './signal-runtime.ts';
+import { EncryptionError } from '../utils/error-handler.ts';
+import { sendQueue } from './message-send-queue.ts';
+import Logger, { createLogger } from '@/utils/logger.ts';
+
+const log = createLogger('HybridMessaging');
 
 // 混合消息传递服务
 class HybridMessaging {
@@ -37,7 +43,7 @@ class HybridMessaging {
   pendingIceCandidates: Map<any, any[]> | null;
   lastHeartbeatTime: number;
   connectionHealthy: boolean;
-  signalRuntime: SignalHttpRuntime | null;
+  signalRuntime: SignalTauriRuntime | null;
   signalReady: boolean;
 
   // 语音通话相关状态
@@ -99,7 +105,6 @@ class HybridMessaging {
     this.currentUserId = userId;
     this.token = token;
     
-    console.log(`[初始化] 开始初始化混合消息系统，用户ID: ${userId}`);
     
     // 初始化消息处理器映射
     this.initializeMessageHandlers();
@@ -107,15 +112,12 @@ class HybridMessaging {
     
     // 建立WebSocket连接用于信令
     await this.connectSignalingServer();
-    console.log('[初始化] WebSocket连接已建立');
     
     // P2P能力注册功能已移除
-    console.log('[初始化] P2P能力注册功能已移除');
     
     // 设置页面关闭时的清理逻辑
     this.setupBeforeUnloadHandler();
     
-    console.log('[初始化] 混合消息系统初始化完成');
   }
 
   // 初始化消息处理器映射
@@ -124,15 +126,14 @@ class HybridMessaging {
 
     try {
       const { hybridApi } = await import('../api/hybrid-api.ts');
-      this.signalRuntime = new SignalHttpRuntime({ userId: this.currentUserId });
+      this.signalRuntime = new SignalTauriRuntime({ userId: this.currentUserId });
       const account = await this.signalRuntime.createAccount({ opkCount: 20 });
       await hybridApi.uploadKeyBundle(account.keyBundle);
       this.signalReady = true;
-      console.log('[Signal] Signal runtime ready and key bundle uploaded');
     } catch (error) {
       this.signalRuntime = null;
       this.signalReady = false;
-      console.warn('[Signal] Signal runtime unavailable, falling back to legacy plaintext transport:', error);
+      log.warn('Signal runtime unavailable, falling back to legacy plaintext transport:', error);
     }
   }
 
@@ -164,7 +165,6 @@ class HybridMessaging {
       this.ws = new WebSocket(`${config.default.WS_BASE_URL}/ws/${this.currentUserId}?token=${this.token}`);
       
       this.ws.onopen = async () => {
-        console.log('信令服务器连接成功');
         
         // 设置信令处理器
         this.setupSignalingHandlers();
@@ -177,33 +177,25 @@ class HybridMessaging {
         this.startConnectionHealthCheck();
         
         // 在线状态同步功能已移除
-        console.log('[状态同步] 在线状态同步功能已移除');
         
         resolve();
       };
       
       this.ws.onerror = async (error) => {
-          console.error('WebSocket连接错误:', error);
-          const config = await import('../config/config.ts');
-          console.error('WebSocket URL:', `${config.default.WS_BASE_URL}/ws/${this.currentUserId}?token=${this.token}`);
-        console.error('Token存在:', !!this.token);
-        console.error('Token长度:', this.token ? this.token.length : 0);
-        reject(error);
+          log.error('WebSocket连接错误:', error);
+          reject(error);
       };
       this.ws.onclose = async (event) => {
-        console.log('信令服务器连接断开', { code: event.code, reason: event.reason });
         
         // 详细的错误代码分析
         if (event.code === 1008) {
-          console.error('❌ WebSocket认证失败 (错误代码1008)');
-          console.error('可能原因: Token无效、过期或用户ID不匹配');
-          console.error('当前Token:', this.token ? `${this.token.substring(0, 20)}...` : 'null');
-          console.error('当前用户ID:', this.currentUserId);
+          log.error('WebSocket认证失败 (错误代码1008)');
+          log.error('可能原因: Token无效、过期或用户ID不匹配');
+          log.error('当前用户ID:', this.currentUserId);
         } else if (event.code === 1006) {
-          console.error('❌ WebSocket异常关闭 (错误代码1006)');
-          console.error('可能原因: 网络连接问题或服务器无响应');
+          log.error('WebSocket异常关闭 (错误代码1006)');
+          log.error('可能原因: 网络连接问题或服务器无响应');
         } else {
-          console.log(`WebSocket关闭代码: ${event.code}, 原因: ${event.reason || '未知'}`);
         }
         
         // 清理所有P2P连接
@@ -211,7 +203,7 @@ class HybridMessaging {
           try {
             connection.close();
           } catch (error) {
-            console.warn(`[P2P] 关闭与用户 ${userId} 的P2P连接失败:`, error);
+            log.warn(`关闭与用户 ${userId} 的P2P连接失败:`, error);
           }
         });
         this.p2pConnections.clear();
@@ -220,13 +212,12 @@ class HybridMessaging {
           try {
             peerConnection.close();
           } catch (error) {
-            console.warn(`[P2P] 关闭与用户 ${userId} 的WebRTC连接失败:`, error);
+            log.warn(`关闭与用户 ${userId} 的WebRTC连接失败:`, error);
           }
         });
         this.peerConnections.clear();
         
         // 离线状态同步功能已移除
-        console.log('[状态同步] 离线状态同步功能已移除');
         
         // 智能重连逻辑
         if (!this.isReconnecting && this.reconnectAttempts < this.maxReconnectAttempts) {
@@ -238,15 +229,14 @@ class HybridMessaging {
             try {
               await this.connectSignalingServer();
               this.reconnectAttempts = 0; // 重连成功，重置计数器
-              console.log('WebSocket重连成功');
             } catch (error) {
-              console.error('WebSocket重连失败:', error);
+              log.error('WebSocket重连失败:', error);
             } finally {
               this.isReconnecting = false;
             }
           }, delay);
         } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-          console.error('WebSocket重连次数已达上限，停止重连');
+          log.error('WebSocket重连次数已达上限，停止重连');
         }
       };
     });
@@ -257,7 +247,6 @@ class HybridMessaging {
     if(!this.ws) return;
     this.ws.onmessage = async (event) => {
       const data = JSON.parse(event.data);
-      console.log('[WebSocket] 收到消息:', data.type, data);
 
       switch (data.type) {
         case 'webrtc_offer':
@@ -323,39 +312,35 @@ class HybridMessaging {
           break;
 
         default:
-          console.log('未知消息类型:', data.type, data);
           break;
       }
     };
 
     this.ws.onclose = (event) => {
-      console.log('WebSocket连接关闭:', event.code, event.reason);
       
       if (!this.isReconnecting && this.reconnectAttempts < this.maxReconnectAttempts) {
-        console.log(`开始重连，尝试次数: ${this.reconnectAttempts + 1}`);
         this.isReconnecting = true;
         
         setTimeout(() => {
           this.reconnectAttempts++;
           this.connectSignalingServer().catch(error => {
-            console.error('重连失败:', error);
+            log.error('重连失败:', error);
             this.isReconnecting = false;
           });
         }, 2000 * this.reconnectAttempts); // 递增延迟
       } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-        console.error('达到最大重连次数，停止重连');
+        log.error('达到最大重连次数，停止重连');
         this.isReconnecting = false;
       }
     };
 
     this.ws.onerror = (error) => {
-      console.error('WebSocket错误:', error);
+      log.error('WebSocket错误:', error);
     };
   }
 
   // P2P能力注册功能已移除
   async registerP2PCapability() {
-    console.log('[P2P] P2P能力注册功能已移除');
   }
 
   // 预连接功能已删除
@@ -363,19 +348,16 @@ class HybridMessaging {
   // 智能发送消息（自动选择P2P或C/S）
   async sendMessage(toUserId: any, content: any, options: any = {}) {
     try {
-      console.log(`[发送消息] 开始发送消息给用户 ${toUserId}`);
       
       // 优先使用已建立的P2P连接
       if (this.p2pConnections.has(toUserId)) {
-        console.log(`[发送消息] 使用已建立的P2P连接`);
         try {
           const p2pResult: any = await this.sendP2PMessage(toUserId, content, options);
           if (p2pResult.success) {
-            console.log(`[发送消息] P2P发送成功:`, p2pResult);
             return { success: true, method: 'P2P', ...p2pResult };
           }
         } catch (p2pError) {
-          console.warn(`[发送消息] P2P发送失败，移除连接并降级到服务器转发:`, p2pError);
+          log.warn(`P2P发送失败，移除连接并降级到服务器转发:`, p2pError);
           // 清理失效的连接
           this.p2pConnections.delete(toUserId);
           if (this.peerConnections.has(toUserId)) {
@@ -387,32 +369,26 @@ class HybridMessaging {
       
       // 检查用户状态并尝试即时P2P连接
       const userStatus = await this.checkUserStatus(toUserId);
-      console.log(`[发送消息] 用户状态:`, userStatus);
       
       if (userStatus.online && userStatus.supportsP2P) {
-        console.log(`[发送消息] 用户在线且支持P2P，尝试即时P2P连接`);
         try {
           const p2pResult: any = await this.sendP2PMessage(toUserId, content, options);
           if (p2pResult.success) {
-            console.log(`[发送消息] P2P发送成功:`, p2pResult);
             return { success: true, method: 'P2P', ...p2pResult };
           }
         } catch (p2pError: any) {
-          console.warn('P2P发送失败，回退到服务器模式:', p2pError.message);
+          log.warn('P2P发送失败，回退到服务器模式:', p2pError.message);
           // P2P失败时不抛出错误，继续使用服务器转发
         }
       } else {
-        console.log(`[发送消息] 用户离线或不支持P2P，使用服务器转发`);
       }
       
       // P2P失败或用户离线，使用服务器转发
-      console.log(`[发送消息] 使用服务器转发模式`);
       const serverResult = await this.sendServerMessage(toUserId, content, options);
-      console.log(`[发送消息] 服务器转发结果:`, serverResult);
       return serverResult;
       
     } catch (error: any) {
-      console.error('发送消息失败:', error);
+      log.error('发送消息失败:', error);
       return { success: false, error: error.message };
     }
   }
@@ -420,17 +396,14 @@ class HybridMessaging {
   // 检查用户状态（C/S API）
   async checkUserStatus(userId: any) {
     try {
-      console.log(`[状态检查] 开始检查用户 ${userId} 的状态`);
       const { hybridApi } = await import('../api/hybrid-api.ts');
       const response = await hybridApi.getUserStatus(userId);
       
       // 后端返回格式是 {success: true, data: {...}}
       const userStatus = response.data?.data;
-      console.log(`[状态检查] API响应:`, response.data);
-      console.log(`[状态检查] 用户 ${userId} 状态:`, userStatus);
       
       if (!userStatus) {
-        console.warn(`[状态检查] 用户 ${userId} 状态数据为空`);
+        log.warn(`用户 ${userId} 状态数据为空`);
         return { online: false, supportsP2P: false };
       }
       
@@ -438,12 +411,6 @@ class HybridMessaging {
       const isOnline = userStatus.status === 'online' && userStatus.hasConnection;
       const supportsP2P = isOnline; // 如果用户在线且有连接，则支持P2P
       
-      console.log(`[状态检查] 详细字段检查:`, {
-        'userStatus.status': userStatus.status,
-        'userStatus.hasConnection': userStatus.hasConnection,
-        'userStatus.lastSeen': userStatus.lastSeen,
-        'userStatus.lastHeartbeat': userStatus.lastHeartbeat
-      });
       
       // 确保返回标准化的状态格式
       const normalizedStatus = {
@@ -454,11 +421,10 @@ class HybridMessaging {
         lastHeartbeat: userStatus.lastHeartbeat
       };
       
-      console.log(`[状态检查] 标准化后的用户 ${userId} 状态:`, normalizedStatus);
       return normalizedStatus;
       
     } catch (error) {
-      console.warn(`[状态检查] 检查用户 ${userId} 状态失败，假设离线:`, error);
+      log.warn(`检查用户 ${userId} 状态失败，假设离线:`, error);
       return { online: false, supportsP2P: false };
     }
   }
@@ -506,9 +472,8 @@ class HybridMessaging {
         }
         
         await localMessageService.sendMessage(dbMessage);
-        console.log('发送的P2P消息已存储到本地数据库');
       } catch (error) {
-        console.error('存储P2P消息到本地数据库失败:', error);
+        log.error('存储P2P消息到本地数据库失败:', error);
       }
       
       return { 
@@ -519,7 +484,7 @@ class HybridMessaging {
       };
       
     } catch (error: any) {
-      console.warn('P2P发送失败:', error);
+      log.warn('P2P发送失败:', error);
       return { success: false, error: error.message };
     }
   }
@@ -565,14 +530,12 @@ class HybridMessaging {
 
         // 监听连接状态变化
         peerConnection.onconnectionstatechange = () => {
-          console.log(`[P2P] 连接状态变化: ${peerConnection.connectionState}`);
           if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'closed') {
             safeReject(new Error(`P2P连接失败: 连接状态=${peerConnection.connectionState}`));
           }
         };
         
         peerConnection.oniceconnectionstatechange = () => {
-          console.log(`[P2P] ICE连接状态变化: ${peerConnection.iceConnectionState}`);
           if (peerConnection.iceConnectionState === 'failed' || peerConnection.iceConnectionState === 'closed') {
             safeReject(new Error(`P2P连接失败: ICE状态=${peerConnection.iceConnectionState}`));
           }
@@ -585,7 +548,6 @@ class HybridMessaging {
 
         // 数据通道事件处理
         dataChannel.onopen = () => {
-          console.log(`P2P连接已建立: ${toUserId}`);
           this.p2pConnections.set(toUserId, dataChannel);
           
           // 通知store更新P2P连接状态
@@ -619,7 +581,7 @@ class HybridMessaging {
             try {
               await localMessageService.receiveMessage(msgData);
             } catch (dbError) {
-              console.warn('保存P2P消息到本地数据库失败:', dbError);
+              log.warn('保存P2P消息到本地数据库失败:', dbError);
             }
             
             this.onMessageReceived(msgData);
@@ -634,7 +596,7 @@ class HybridMessaging {
         };
 
         dataChannel.onerror = (error: any) => {
-          console.warn(`[P2P] 数据通道错误 (用户 ${toUserId}):`, error.error?.message || error.type || '连接异常');
+          log.warn(`数据通道错误 (用户 ${toUserId}):`, error.error?.message || error.type || '连接异常');
           this.p2pConnections.delete(toUserId);
           if (this.onP2PStatusChanged) {
             this.onP2PStatusChanged(toUserId, 'disconnected');
@@ -652,7 +614,7 @@ class HybridMessaging {
                 payload: event.candidate
               }));
             } else {
-              console.warn(`[P2P] WebSocket连接不可用，无法发送ICE候选到用户 ${toUserId}`);
+              log.warn(`WebSocket连接不可用，无法发送ICE候选到用户 ${toUserId}`);
               safeReject(new Error('WebSocket连接断开，P2P连接失败'));
             }
           }
@@ -670,7 +632,7 @@ class HybridMessaging {
             payload: { type: offer.type, sdp: offer.sdp }
           }));
         } else {
-          console.error(`[P2P] WebSocket连接不可用，无法发送Offer到用户 ${toUserId}`);
+          log.error(`WebSocket连接不可用，无法发送Offer到用户 ${toUserId}`);
           safeReject(new Error('WebSocket连接断开，无法发送Offer'));
           return;
         }
@@ -680,11 +642,11 @@ class HybridMessaging {
 
         // 设置连接超时
         timeout = setTimeout(() => {
-          console.warn(`[P2P] 连接超时，当前状态: 连接=${peerConnection.connectionState}, ICE=${peerConnection.iceConnectionState}`);
+          log.warn(`连接超时，当前状态: 连接=${peerConnection.connectionState}, ICE=${peerConnection.iceConnectionState}`);
           try {
             peerConnection.close();
           } catch (error) {
-            console.warn(`[P2P] 关闭超时连接失败:`, error);
+            log.warn(`关闭超时连接失败:`, error);
           }
           safeReject(new Error(`P2P连接超时: 连接状态=${peerConnection.connectionState}, ICE状态=${peerConnection.iceConnectionState}`));
         }, 15000);
@@ -709,9 +671,8 @@ class HybridMessaging {
 
       // 监听连接状态变化
       peerConnection.onconnectionstatechange = () => {
-        console.log(`[P2P] 接收方连接状态变化: ${peerConnection.connectionState}`);
         if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'closed') {
-          console.warn(`[P2P] 接收方连接失败: ${peerConnection.connectionState}`);
+          log.warn(`接收方连接失败: ${peerConnection.connectionState}`);
           this.p2pConnections.delete(fromUserId);
           if (this.peerConnections.has(fromUserId)) {
             this.peerConnections.delete(fromUserId);
@@ -720,7 +681,6 @@ class HybridMessaging {
       };
       
       peerConnection.oniceconnectionstatechange = () => {
-        console.log(`[P2P] 接收方ICE连接状态变化: ${peerConnection.iceConnectionState}`);
       };
 
       // 设置远程描述
@@ -731,7 +691,6 @@ class HybridMessaging {
         const dataChannel = event.channel;
         
         dataChannel.onopen = () => {
-          console.log(`P2P连接已接受: ${fromUserId}`);
           this.p2pConnections.set(fromUserId, dataChannel);
           
           if (this.onP2PStatusChanged) {
@@ -760,9 +719,8 @@ class HybridMessaging {
             
             try {
               await localMessageService.receiveMessage(msgData);
-              console.log('P2P消息已保存到本地数据库');
             } catch (dbError) {
-              console.warn('保存P2P消息到本地数据库失败:', dbError);
+              log.warn('保存P2P消息到本地数据库失败:', dbError);
             }
             
             this.onMessageReceived(msgData);
@@ -770,7 +728,6 @@ class HybridMessaging {
         };
         
         dataChannel.onclose = () => {
-          console.log(`[P2P] 数据通道关闭: ${fromUserId}`);
           this.p2pConnections.delete(fromUserId);
           if (this.onP2PStatusChanged) {
             this.onP2PStatusChanged(fromUserId, 'disconnected');
@@ -778,7 +735,7 @@ class HybridMessaging {
         };
         
         dataChannel.onerror = (error: any) => {
-          console.warn(`[P2P] 接收方数据通道错误 (来自用户 ${fromUserId}):`, error.error?.message || error.type || '连接异常');
+          log.warn(`接收方数据通道错误 (来自用户 ${fromUserId}):`, error.error?.message || error.type || '连接异常');
           this.p2pConnections.delete(fromUserId);
           if (this.onP2PStatusChanged) {
             this.onP2PStatusChanged(fromUserId, 'disconnected');
@@ -789,7 +746,6 @@ class HybridMessaging {
       // ICE候选事件
       peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-          console.log(`[P2P] 接收方发送ICE候选到 ${fromUserId}`);
           if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify({
               type: 'webrtc_ice_candidate',
@@ -797,7 +753,7 @@ class HybridMessaging {
               payload: event.candidate
             }));
           } else {
-            console.warn(`[P2P] WebSocket连接不可用，无法发送ICE候选到用户 ${fromUserId}`);
+            log.warn(`WebSocket连接不可用，无法发送ICE候选到用户 ${fromUserId}`);
           }
         }
       };
@@ -807,7 +763,6 @@ class HybridMessaging {
       await peerConnection.setLocalDescription(answer);
 
       // 发送Answer
-      console.log(`[P2P] 发送Answer到 ${fromUserId}`);
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({
           type: 'webrtc_answer',
@@ -815,7 +770,7 @@ class HybridMessaging {
           payload: { type: answer.type, sdp: answer.sdp }
         }));
       } else {
-        console.error(`[P2P] WebSocket连接不可用，无法发送Answer到用户 ${fromUserId}`);
+        log.error(`WebSocket连接不可用，无法发送Answer到用户 ${fromUserId}`);
         peerConnection.close();
         return;
       }
@@ -826,7 +781,7 @@ class HybridMessaging {
         if (this.peerConnections.has(fromUserId) && 
             peerConnection.connectionState !== 'connected' && 
             peerConnection.connectionState !== 'closed') {
-          console.warn(`[P2P] 接收方连接超时: ${fromUserId}`);
+          log.warn(`接收方连接超时: ${fromUserId}`);
           peerConnection.close();
           this.peerConnections.delete(fromUserId);
           this.p2pConnections.delete(fromUserId);
@@ -834,7 +789,7 @@ class HybridMessaging {
       }, 15000);
 
     } catch (error) {
-      console.error('处理P2P Offer失败:', error);
+      log.error('处理P2P Offer失败:', error);
       const fromUserId = data.from;
       if (this.peerConnections.has(fromUserId)) {
         const pc = this.peerConnections.get(fromUserId);
@@ -847,21 +802,19 @@ class HybridMessaging {
 
   // 处理P2P Answer
   async handleP2PAnswer(data: any) {
-    console.log(`[P2P] 收到来自 ${data.from} 的Answer`);
     try {
       const fromUserId = data.from;
       const peerConnection = this.peerConnections.get(fromUserId);
       if (!peerConnection) {
-        console.warn(`[P2P] 未找到与 ${fromUserId} 的连接`);
+        log.warn(`未找到与 ${fromUserId} 的连接`);
         return;
       }
       
       await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-      console.log(`[P2P] 已为 ${fromUserId} 设置远程描述`);
       
     } catch (error) {
       const fromUserId = data.from;
-      console.error(`[P2P] 处理来自 ${fromUserId} 的Answer失败:`, error);
+      log.error(`处理来自 ${fromUserId} 的Answer失败:`, error);
       if (this.peerConnections.has(fromUserId)) {
         const pc = this.peerConnections.get(fromUserId);
         pc?.close();
@@ -873,31 +826,28 @@ class HybridMessaging {
 
   // 处理ICE候选
   async handleIceCandidate(data: any) {
-    console.log(`[P2P] 收到来自 ${data.from} 的ICE候选`);
     try {
       const fromUserId = data.from;
       const peerConnection = this.peerConnections.get(fromUserId);
       if (!peerConnection) {
-        console.warn(`[P2P] 未找到与 ${fromUserId} 的连接`);
+        log.warn(`未找到与 ${fromUserId} 的连接`);
         return;
       }
       
       if (peerConnection.connectionState === 'closed') {
-        console.warn(`[P2P] 与 ${fromUserId} 的连接已关闭，忽略ICE候选`);
+        log.warn(`与 ${fromUserId} 的连接已关闭，忽略ICE候选`);
         this.peerConnections.delete(fromUserId);
         return;
       }
       
       if (!data.candidate) {
-        console.log(`[P2P] 收到来自 ${fromUserId} 的空ICE候选（连接完成信号）`);
         return;
       }
       
       if (peerConnection.remoteDescription) {
         await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-        console.log(`[P2P] 已为 ${fromUserId} 添加ICE候选`);
       } else {
-        console.warn(`[P2P] 收到来自 ${fromUserId} 的ICE候选，但远程描述尚未设置`);
+        log.warn(`收到来自 ${fromUserId} 的ICE候选，但远程描述尚未设置`);
         if (!this.pendingIceCandidates) {
           this.pendingIceCandidates = new Map();
         }
@@ -908,7 +858,7 @@ class HybridMessaging {
       }
       
     } catch (error) {
-      console.error(`[P2P] 处理来自 ${data.from} 的ICE候选失败:`, error);
+      log.error(`处理来自 ${data.from} 的ICE候选失败:`, error);
     }
   }
 
@@ -934,7 +884,7 @@ class HybridMessaging {
         envelope,
       };
     } catch (error) {
-      console.warn('[Signal] Failed to encrypt server message, falling back to plaintext transport:', error);
+      log.warn('Failed to encrypt server message, falling back to plaintext transport:', error);
       return { content, encrypted: false };
     }
   }
@@ -946,7 +896,7 @@ class HybridMessaging {
     }
 
     if (!this.signalRuntime) {
-      this.signalRuntime = new SignalHttpRuntime({ userId: this.currentUserId as any });
+      this.signalRuntime = new SignalTauriRuntime({ userId: this.currentUserId as any });
     }
 
     try {
@@ -957,14 +907,13 @@ class HybridMessaging {
       this.signalReady = true;
       return { content: plaintext, encrypted: true, envelope };
     } catch (error) {
-      console.error('[Signal] Failed to decrypt server message:', error);
+      log.error('Failed to decrypt server message:', error);
       return { content: '[Signal message could not be decrypted]', encrypted: true, envelope, error };
     }
   }
 
   async sendServerMessage(toUserId: any, content: any, options: any = {}) {
     try {
-      console.log('发送服务器消息:', { toUserId, content, options });
       
       const messageType = options.messageType || 'text';
       const transportMessage = await this.encryptForServerTransport(toUserId, content, messageType);
@@ -983,7 +932,6 @@ class HybridMessaging {
       const response = await hybridApi.sendMessage(messageData);
 
       const result = response.data;
-      console.log('服务器响应结果:', result);
       
       try {
         const sentMsgData: any = {
@@ -1002,9 +950,8 @@ class HybridMessaging {
         }
         
         await localMessageService.sendMessage(sentMsgData);
-        console.log('发送的服务器消息已保存到本地数据库');
       } catch (dbError) {
-        console.warn('保存发送的服务器消息到本地数据库失败:', dbError);
+        log.warn('保存发送的服务器消息到本地数据库失败:', dbError);
       }
       
       return { 
@@ -1015,7 +962,7 @@ class HybridMessaging {
       };
 
     } catch (error: any) {
-      console.error('sendServerMessage错误:', error);
+      log.error('sendServerMessage错误:', error);
       return { success: false, error: error.message };
     }
   }
@@ -1064,9 +1011,8 @@ class HybridMessaging {
     
     try {
       await localMessageService.receiveMessage(msgData);
-      console.log('服务器消息已保存到本地数据库');
     } catch (dbError) {
-      console.error('保存服务器消息到数据库失败:', dbError);
+      log.error('保存服务器消息到数据库失败:', dbError);
     }
     
     if (this.onMessageReceived) {
@@ -1081,7 +1027,7 @@ class HybridMessaging {
       const response = await hybridApi.getMessageHistory(userId);
       return response.data;
     } catch (error) {
-      console.error('获取消息历史失败:', error);
+      log.error('获取消息历史失败:', error);
       return [];
     }
   }
@@ -1095,12 +1041,10 @@ class HybridMessaging {
       try {
         if (dataChannel.readyState === 'open' || dataChannel.readyState === 'connecting') {
           dataChannel.close();
-          console.log(`[P2P] 关闭与用户 ${userId} 的数据通道`);
         } else {
-          console.log(`[P2P] 用户 ${userId} 的数据通道已关闭，跳过关闭操作`);
         }
       } catch (error) {
-        console.warn(`[P2P] 关闭用户 ${userId} 的数据通道失败:`, error);
+        log.warn(`关闭用户 ${userId} 的数据通道失败:`, error);
       }
       this.p2pConnections.delete(userId);
     }
@@ -1118,7 +1062,6 @@ class HybridMessaging {
   // 设置页面关闭时的处理逻辑
   setupBeforeUnloadHandler() {
     window.addEventListener('beforeunload', (event) => {
-      console.log('[离线] 离线状态发送功能已移除');
     });
   }
   
@@ -1152,7 +1095,6 @@ class HybridMessaging {
     }
     
     this.healthCheckInterval = setInterval(() => {
-      console.log('[连接健康检查] 开始检查连接状态');
       
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         try {
@@ -1160,16 +1102,14 @@ class HybridMessaging {
             type: 'heartbeat',
             timestamp: getChinaTimeISO()
           }));
-          console.log('[心跳] 已发送WebSocket心跳');
         } catch (error) {
-          console.error('[心跳] 发送WebSocket心跳失败:', error);
+          log.error('发送WebSocket心跳失败:', error);
         }
       }
       
       const toRemove: any[] = [];
       this.p2pConnections.forEach((connection, userId) => {
         if (connection.readyState === 'closed' || connection.readyState === 'closing') {
-          console.log(`[连接健康检查] 发现无效连接，用户 ${userId}，状态: ${connection.readyState}`);
           toRemove.push(userId);
         }
       });
@@ -1180,11 +1120,10 @@ class HybridMessaging {
           try {
             this.peerConnections.get(userId)?.close();
           } catch (error) {
-            console.warn(`[连接健康检查] 关闭WebRTC连接失败:`, error);
+            log.warn(`关闭WebRTC连接失败:`, error);
           }
           this.peerConnections.delete(userId);
         }
-        console.log(`[连接健康检查] 已清理用户 ${userId} 的无效连接`);
       });
       
     }, 60000); 
@@ -1200,7 +1139,6 @@ class HybridMessaging {
   
   // 清理资源
   cleanup() {
-    console.log('清理HybridMessaging资源');
     
     this.stopConnectionHealthCheck();
     
@@ -1208,12 +1146,10 @@ class HybridMessaging {
       try {
         if (connection.readyState === 'open' || connection.readyState === 'connecting') {
           connection.close();
-          console.log(`已关闭与用户 ${userId} 的P2P连接`);
         } else {
-          console.log(`用户 ${userId} 的P2P连接已关闭，跳过关闭操作`);
         }
       } catch (error) {
-        console.warn(`关闭与用户 ${userId} 的P2P连接失败:`, error);
+        log.warn(`关闭与用户 ${userId} 的P2P连接失败:`, error);
       }
     });
     this.p2pConnections.clear();
@@ -1221,16 +1157,14 @@ class HybridMessaging {
     this.peerConnections.forEach((peerConnection, userId) => {
       try {
         peerConnection.close();
-        console.log(`已关闭与用户 ${userId} 的WebRTC连接`);
       } catch (error) {
-        console.warn(`关闭与用户 ${userId} 的WebRTC连接失败:`, error);
+        log.warn(`关闭与用户 ${userId} 的WebRTC连接失败:`, error);
       }
     });
     this.peerConnections.clear();
     
     if (this.pendingIceCandidates) {
       this.pendingIceCandidates.clear();
-      console.log('已清理暂存的ICE候选');
     }
     
     if (this.ws) {
@@ -1240,7 +1174,6 @@ class HybridMessaging {
   }
   
   async setOfflineStatus() {
-    console.log('[离线] 离线状态设置功能已移除');
   }
 
   // ==================== 语音通话功能 ====================
@@ -1253,12 +1186,10 @@ class HybridMessaging {
       if (this.voiceCallState.localStream) {
         this.voiceCallState.localStream.getTracks().forEach((track: any) => {
           track.stop();
-          console.log('[语音通话] 停止音频轨道:', track.kind);
         });
       }
       if (this.voiceCallState.peerConnection) {
         this.voiceCallState.peerConnection.close();
-        console.log('[语音通话] 关闭WebRTC连接');
       }
     }
     
@@ -1299,12 +1230,10 @@ class HybridMessaging {
       if (this.videoCallState.localStream) {
         this.videoCallState.localStream.getTracks().forEach((track: any) => {
           track.stop();
-          console.log('[视频通话] 停止媒体轨道:', track.kind);
         });
       }
       if (this.videoCallState.peerConnection) {
         this.videoCallState.peerConnection.close();
-        console.log('[视频通话] 关闭WebRTC连接');
       }
     }
     
@@ -1342,9 +1271,8 @@ class HybridMessaging {
   initVideoEncryption() {
     try {
       this.generateVideoEncryptionKey();
-      console.log('[视频加密] 加密系统初始化完成');
     } catch (error) {
-      console.error('[视频加密] 初始化失败:', error);
+      log.error('初始化失败:', error);
     }
   }
   
@@ -1358,9 +1286,8 @@ class HybridMessaging {
   initAudioEncryption() {
     try {
       this.generateEncryptionKey();
-      console.log('[音频加密] 加密系统初始化完成');
     } catch (error) {
-      console.error('[音频加密] 初始化失败:', error);
+      log.error('初始化失败:', error);
     }
   }
   
@@ -1389,10 +1316,8 @@ class HybridMessaging {
 
   async initiateVoiceCall(toUserId: any) {
     try {
-      console.log(`[语音通话] 开始发起通话给用户 ${toUserId}`);
       
       if (this.voiceCallState && this.voiceCallState.isInCall) {
-        console.log('[语音通话] 当前已在通话中，先结束现有通话');
         await this.forceResetVoiceCallState();
       }
       
@@ -1408,7 +1333,6 @@ class HybridMessaging {
         video: false
       });
       
-      console.log('[语音通话] 本地音频流获取成功');
       
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       const audioContext = new AudioContextClass();
@@ -1428,45 +1352,37 @@ class HybridMessaging {
       });
       
       dataChannel.onopen = () => {
-        console.log('[视频通话] 数据通道已打开');
       };
       
       dataChannel.onclose = () => {
-        console.log('[视频通话] 数据通道已关闭');
       };
       
       dataChannel.onerror = (error: any) => {
         if (error.error && error.error.name === 'OperationError' && 
             error.error.message.includes('User-Initiated Abort')) {
-          console.log('[视频通话] 数据通道正常关闭');
           return;
         }
-        console.warn('[视频通话] 数据通道错误:', error);
+        log.warn('数据通道错误:', error);
       };
       
       dataChannel.onmessage = (event) => {
-        console.log('[视频通话] 收到数据通道消息:', event.data);
       };
       
       peerConnection.ondatachannel = (event) => {
         const channel = event.channel;
-        console.log('[视频通话] 收到数据通道:', channel.label);
         
         channel.onopen = () => {
-          console.log('[视频通话] 接收数据通道已打开');
         };
         
         channel.onclose = () => {
-          console.log('[视频通话] 接收数据通道已关闭');
         };
         
         channel.onerror = (error: any) => {
           if (error.error && error.error.name === 'OperationError' && 
               error.error.message.includes('User-Initiated Abort')) {
-            console.log('[视频通话] 接收数据通道正常关闭');
             return;
           }
-          console.warn('[视频通话] 接收数据通道错误:', error);
+          log.warn('接收数据通道错误:', error);
         };
       };
       
@@ -1475,11 +1391,9 @@ class HybridMessaging {
       });
       
       peerConnection.ontrack = (event) => {
-        console.log('[语音通话] 收到远程音频流');
         const remoteStream = event.streams[0];
         
         if (this.voiceCallState.encryptionEnabled && this.voiceCallState.encryptionKey) {
-          console.log('[音频加密] 对远程音频流进行解密处理');
         }
         
         this.voiceCallState.remoteStream = remoteStream;
@@ -1494,7 +1408,6 @@ class HybridMessaging {
       };
       
       peerConnection.onconnectionstatechange = () => {
-        console.log(`[语音通话] 连接状态: ${peerConnection.connectionState}`);
         if (this.onVoiceCallStatusChanged) {
           this.onVoiceCallStatusChanged({
             type: 'connection_state_changed',
@@ -1503,7 +1416,6 @@ class HybridMessaging {
         }
         
         if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected') {
-          console.log('[语音通话] 连接失败，自动清理资源');
           setTimeout(() => {
             this.forceResetVoiceCallState();
           }, 1000);
@@ -1537,9 +1449,7 @@ class HybridMessaging {
           encryption_key: this.voiceCallState.encryptionEnabled ? 
             Array.from(this.voiceCallState.encryptionKey) : null
         };
-        console.log('[语音通话] 发送通话邀请消息（含加密密钥）');
         this.ws.send(JSON.stringify(message));
-        console.log('[语音通话] 通话邀请消息已发送到服务器');
       } else {
         throw new Error('WebSocket连接不可用，无法发起语音通话');
       }
@@ -1560,7 +1470,6 @@ class HybridMessaging {
       };
       this.voiceConnections.set(toUserId, peerConnection);
       
-      console.log('[语音通话] 通话邀请已发送，加密已启用');
       
       return {
         success: true,
@@ -1570,7 +1479,7 @@ class HybridMessaging {
       };
       
     } catch (error) {
-      console.error('[语音通话] 发起通话失败:', error);
+      log.error('发起通话失败:', error);
       await this.forceResetVoiceCallState();
       throw error;
     }
@@ -1578,10 +1487,8 @@ class HybridMessaging {
   
   async initiateVideoCall(toUserId: any) {
     try {
-      console.log(`[视频通话] 开始发起通话给用户 ${toUserId}`);
       
       if (this.videoCallState && this.videoCallState.isInCall) {
-        console.log('[视频通话] 当前已在通话中，先结束现有通话');
         await this.forceResetVideoCallState();
       }
       
@@ -1601,7 +1508,6 @@ class HybridMessaging {
         }
       });
       
-      console.log('[视频通话] 本地媒体流获取成功');
       
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       const audioContext = new AudioContextClass();
@@ -1621,39 +1527,32 @@ class HybridMessaging {
       });
       
       dataChannel.onopen = () => {
-        console.log('[视频通话] 数据通道已打开');
       };
       
       dataChannel.onclose = () => {
-        console.log('[视频通话] 数据通道已关闭');
       };
       
       dataChannel.onerror = (error: any) => {
-        console.warn('[视频通话] 数据通道错误:', error);
+        log.warn('数据通道错误:', error);
       };
       
       dataChannel.onmessage = (event) => {
-        console.log('[视频通话] 收到数据通道消息:', event.data);
       };
       
       peerConnection.ondatachannel = (event) => {
         const channel = event.channel;
-        console.log('[视频通话] 收到数据通道:', channel.label);
         
         channel.onopen = () => {
-          console.log('[视频通话] 接收数据通道已打开');
         };
         
         channel.onclose = () => {
-          console.log('[视频通话] 接收数据通道已关闭');
         };
         
         channel.onerror = (error: any) => {
-          console.warn('[视频通话] 接收数据通道错误:', error);
+          log.warn('接收数据通道错误:', error);
         };
         
         channel.onmessage = (event) => {
-          console.log('[视频通话] 收到数据通道消息:', event.data);
         };
       };
       
@@ -1662,11 +1561,9 @@ class HybridMessaging {
       });
       
       peerConnection.ontrack = (event) => {
-        console.log('[视频通话] 收到远程媒体流');
         const remoteStream = event.streams[0];
         
         if (this.videoCallState.encryptionEnabled && this.videoCallState.encryptionKey) {
-          console.log('[视频加密] 对远程媒体流进行解密处理');
         }
         
         this.videoCallState.remoteStream = remoteStream;
@@ -1681,7 +1578,6 @@ class HybridMessaging {
       };
       
       peerConnection.onconnectionstatechange = () => {
-        console.log(`[视频通话] 连接状态: ${peerConnection.connectionState}`);
         if (this.onVideoCallStatusChanged) {
           this.onVideoCallStatusChanged({
             type: 'connection_state_changed',
@@ -1690,7 +1586,6 @@ class HybridMessaging {
         }
         
         if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected') {
-          console.log('[视频通话] 连接失败，自动清理资源');
           setTimeout(() => {
             this.forceResetVideoCallState();
           }, 1000);
@@ -1724,9 +1619,7 @@ class HybridMessaging {
           encryption_key: this.videoCallState.encryptionEnabled ? 
             Array.from(this.videoCallState.encryptionKey) : null
         };
-        console.log('[视频通话] 发送通话邀请消息（含加密密钥）');
         this.ws.send(JSON.stringify(message));
-        console.log('[视频通话] 通话邀请消息已发送到服务器');
       } else {
         throw new Error('WebSocket连接不可用，无法发起视频通话');
       }
@@ -1748,7 +1641,6 @@ class HybridMessaging {
       };
       this.videoConnections.set(toUserId, peerConnection);
       
-      console.log('[视频通话] 通话邀请已发送，加密已启用');
       
       return {
         success: true,
@@ -1758,7 +1650,7 @@ class HybridMessaging {
       };
       
     } catch (error) {
-      console.error('[视频通话] 发起通话失败:', error);
+      log.error('发起通话失败:', error);
       await this.forceResetVideoCallState();
       throw error;
     }
@@ -1766,13 +1658,11 @@ class HybridMessaging {
   
   async acceptVoiceCall(fromUserId: any, offer: any, encryptionKey: any = null) {
     try {
-      console.log(`[语音通话] 接听来自用户 ${fromUserId} 的通话`);
       
       await this.forceResetVoiceCallState();
       
       if (encryptionKey && Array.isArray(encryptionKey)) {
         this.voiceCallState.encryptionKey = new Uint8Array(encryptionKey);
-        console.log('[音频加密] 接收到加密密钥，启用加密通话');
       }
       
       const localStream = await navigator.mediaDevices.getUserMedia({
@@ -1785,7 +1675,6 @@ class HybridMessaging {
         video: false
       });
       
-      console.log('[语音通话] 本地音频流获取成功');
       
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       const audioContext = new AudioContextClass();
@@ -1802,22 +1691,18 @@ class HybridMessaging {
       
       peerConnection.ondatachannel = (event) => {
         const channel = event.channel;
-        console.log('[视频通话] 收到数据通道:', channel.label);
         
         channel.onopen = () => {
-          console.log('[视频通话] 接收数据通道已打开');
         };
         
         channel.onclose = () => {
-          console.log('[视频通话] 接收数据通道已关闭');
         };
         
         channel.onerror = (error: any) => {
-          console.warn('[视频通话] 接收数据通道错误:', error);
+          log.warn('接收数据通道错误:', error);
         };
         
         channel.onmessage = (event) => {
-          console.log('[视频通话] 收到数据通道消息:', event.data);
         };
       };
       
@@ -1826,11 +1711,9 @@ class HybridMessaging {
       });
       
       peerConnection.ontrack = (event) => {
-        console.log('[语音通话] 收到远程音频流');
         const remoteStream = event.streams[0];
         
         if (this.voiceCallState.encryptionEnabled && this.voiceCallState.encryptionKey) {
-          console.log('[音频加密] 对远程音频流进行解密处理');
         }
         
         this.voiceCallState.remoteStream = remoteStream;
@@ -1845,7 +1728,6 @@ class HybridMessaging {
       };
       
       peerConnection.onconnectionstatechange = () => {
-        console.log(`[语音通话] 连接状态: ${peerConnection.connectionState}`);
         if (this.onVoiceCallStatusChanged) {
           this.onVoiceCallStatusChanged({
             type: 'connection_state_changed',
@@ -1854,7 +1736,6 @@ class HybridMessaging {
         }
         
         if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected') {
-          console.log('[语音通话] 连接失败，自动清理资源');
           setTimeout(() => {
             this.forceResetVoiceCallState();
           }, 1000);
@@ -1889,7 +1770,6 @@ class HybridMessaging {
           },
           encryption_confirmed: this.voiceCallState.encryptionEnabled && !!this.voiceCallState.encryptionKey
         }));
-        console.log('[语音通话] 发送应答消息（含加密确认）');
       } else {
         throw new Error('WebSocket连接不可用，无法接听语音通话');
       }
@@ -1910,7 +1790,6 @@ class HybridMessaging {
       };
       this.voiceConnections.set(fromUserId, peerConnection);
       
-      console.log('[语音通话] 通话已接听，加密状态:', this.voiceCallState.encryptionEnabled);
       
       return {
         success: true,
@@ -1919,7 +1798,7 @@ class HybridMessaging {
       };
       
     } catch (error) {
-      console.error('[语音通话] 接听通话失败:', error);
+      log.error('接听通话失败:', error);
       await this.forceResetVoiceCallState();
       throw error;
     }
@@ -1927,7 +1806,6 @@ class HybridMessaging {
   
   async rejectVoiceCall(fromUserId: any) {
     try {
-      console.log(`[语音通话] 拒绝来自用户 ${fromUserId} 的通话`);
       
       await this.saveVoiceCallRecord(fromUserId, 'rejected');
       
@@ -1946,25 +1824,22 @@ class HybridMessaging {
       this.onVoiceCallReceived = existingOnVoiceCallReceived;
       this.onVoiceCallStatusChanged = existingOnVoiceCallStatusChanged;
       
-      console.log('[语音通话] 拒绝通话处理完成');
       
       return { success: true };
       
     } catch (error) {
-      console.error('[语音通话] 拒绝通话失败:', error);
+      log.error('拒绝通话失败:', error);
       throw error;
     }
   }
   
   async acceptVideoCall(fromUserId: any, offer: any, encryptionKey: any = null) {
     try {
-      console.log(`[视频通话] 接听来自用户 ${fromUserId} 的通话`);
       
       await this.forceResetVideoCallState();
       
       if (encryptionKey && Array.isArray(encryptionKey)) {
         this.videoCallState.encryptionKey = new Uint8Array(encryptionKey);
-        console.log('[视频加密] 接收到加密密钥，启用加密通话');
       }
       
       const localStream = await navigator.mediaDevices.getUserMedia({
@@ -1981,7 +1856,6 @@ class HybridMessaging {
         }
       });
       
-      console.log('[视频通话] 本地媒体流获取成功');
       
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       const audioContext = new AudioContextClass();
@@ -2001,7 +1875,6 @@ class HybridMessaging {
       });
       
       peerConnection.ontrack = (event) => {
-        console.log('[视频通话] 收到远程媒体流');
         const remoteStream = event.streams[0];
         
         this.videoCallState.remoteStream = remoteStream;
@@ -2016,7 +1889,6 @@ class HybridMessaging {
       };
       
       peerConnection.onconnectionstatechange = () => {
-        console.log(`[视频通话] 连接状态: ${peerConnection.connectionState}`);
         if (this.onVideoCallStatusChanged) {
           this.onVideoCallStatusChanged({
             type: 'connection_state_changed',
@@ -2025,7 +1897,6 @@ class HybridMessaging {
         }
         
         if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected') {
-          console.log('[视频通话] 连接失败，自动清理资源');
           setTimeout(() => {
             this.forceResetVideoCallState();
           }, 1000);
@@ -2060,7 +1931,6 @@ class HybridMessaging {
           },
           encryption_confirmed: this.videoCallState.encryptionEnabled && !!this.videoCallState.encryptionKey
         }));
-        console.log('[视频通话] 发送应答消息');
       } else {
         throw new Error('WebSocket连接不可用，无法接听视频通话');
       }
@@ -2081,7 +1951,6 @@ class HybridMessaging {
       };
       this.videoConnections.set(fromUserId, peerConnection);
       
-      console.log('[视频通话] 通话已接听');
       
       return {
         success: true,
@@ -2090,7 +1959,7 @@ class HybridMessaging {
       };
       
     } catch (error) {
-      console.error('[视频通话] 接听通话失败:', error);
+      log.error('接听通话失败:', error);
       await this.forceResetVideoCallState();
       throw error;
     }
@@ -2098,7 +1967,6 @@ class HybridMessaging {
   
   async rejectVideoCall(fromUserId: any) {
     try {
-      console.log(`[视频通话] 拒绝来自用户 ${fromUserId} 的通话`);
       
       await this.saveVideoCallRecord(fromUserId, 'rejected');
       
@@ -2117,19 +1985,17 @@ class HybridMessaging {
       this.onVideoCallReceived = existingOnVideoCallReceived;
       this.onVideoCallStatusChanged = existingOnVideoCallStatusChanged;
       
-      console.log('[视频通话] 拒绝通话处理完成');
       
       return { success: true };
       
     } catch (error) {
-      console.error('[视频通话] 拒绝通话失败:', error);
+      log.error('拒绝通话失败:', error);
       throw error;
     }
   }
   
   async endVideoCall(userId: any) {
     try {
-      console.log(`[视频通话] 结束与用户 ${userId} 的通话`);
       
       if (this.videoCallState && this.videoCallState.callStartTime) {
         await this.saveVideoCallRecord(userId, 'completed');
@@ -2157,19 +2023,17 @@ class HybridMessaging {
         });
       }
       
-      console.log('[视频通话] 通话结束处理完成');
       
       return { success: true };
       
     } catch (error) {
-      console.error('[视频通话] 结束通话失败:', error);
+      log.error('结束通话失败:', error);
       throw error;
     }
   }
 
   async endVoiceCall(userId: any) {
     try {
-      console.log(`[语音通话] 结束与用户 ${userId} 的通话`);
       
       if (this.voiceCallState && this.voiceCallState.callStartTime) {
         await this.saveVoiceCallRecord(userId, 'completed');
@@ -2197,12 +2061,11 @@ class HybridMessaging {
         });
       }
       
-      console.log('[语音通话] 通话结束处理完成');
       
       return { success: true };
       
     } catch (error) {
-      console.error('[语音通话] 结束通话失败:', error);
+      log.error('结束通话失败:', error);
       throw error;
     }
   }
@@ -2220,25 +2083,21 @@ class HybridMessaging {
   
   async forceResetVoiceCallState() {
     try {
-      console.log('[语音通话] 强制重置语音通话状态');
       
       if (this.voiceCallState) {
         if (this.voiceCallState.localStream) {
           this.voiceCallState.localStream.getTracks().forEach((track: any) => {
             track.stop();
-            console.log('[语音通话] 强制停止音频轨道:', track.kind);
           });
         }
         if (this.voiceCallState.peerConnection) {
           this.voiceCallState.peerConnection.close();
-          console.log('[语音通话] 强制关闭WebRTC连接');
         }
         if (this.voiceCallState.audioContext) {
           try {
             await this.voiceCallState.audioContext.close();
-            console.log('[语音通话] 强制关闭音频上下文');
           } catch (error) {
-            console.warn('[语音通话] 关闭音频上下文失败:', error);
+            log.warn('关闭音频上下文失败:', error);
           }
         }
       }
@@ -2247,9 +2106,8 @@ class HybridMessaging {
         this.voiceConnections.forEach((connection, userId) => {
           try {
             connection.close();
-            console.log(`[语音通话] 强制关闭与用户 ${userId} 的连接`);
           } catch (error) {
-            console.warn(`[语音通话] 关闭与用户 ${userId} 的连接失败:`, error);
+            log.warn(`关闭与用户 ${userId} 的连接失败:`, error);
           }
         });
         this.voiceConnections.clear();
@@ -2264,25 +2122,22 @@ class HybridMessaging {
       
       this.initVoiceCallState();
       
-      console.log('[语音通话] 强制重置完成');
       
       return { success: true };
       
     } catch (error: any) {
-      console.error('[语音通话] 强制重置状态失败:', error);
+      log.error('强制重置状态失败:', error);
       return { success: false, error: error.message };
     }
   }
   
   async forceResetVideoCallState() {
     try {
-      console.log('[视频通话] 强制重置视频通话状态');
       
       if (this.videoCallState) {
         if (this.videoCallState.localStream) {
           this.videoCallState.localStream.getTracks().forEach((track: any) => {
             track.stop();
-            console.log('[视频通话] 强制停止媒体轨道:', track.kind);
           });
         }
         if (this.videoCallState.dataChannel) {
@@ -2290,24 +2145,20 @@ class HybridMessaging {
             if (this.videoCallState.dataChannel.readyState === 'open' || 
                 this.videoCallState.dataChannel.readyState === 'connecting') {
               this.videoCallState.dataChannel.close();
-              console.log('[视频通话] 强制关闭数据通道');
             } else {
-              console.log('[视频通话] 数据通道已关闭，跳过关闭操作');
             }
           } catch (error) {
-            console.warn('[视频通话] 关闭数据通道失败:', error);
+            log.warn('关闭数据通道失败:', error);
           }
         }
         if (this.videoCallState.peerConnection) {
           this.videoCallState.peerConnection.close();
-          console.log('[视频通话] 强制关闭WebRTC连接');
         }
         if (this.videoCallState.audioContext) {
           try {
             await this.videoCallState.audioContext.close();
-            console.log('[视频通话] 强制关闭音频上下文');
           } catch (error) {
-            console.warn('[视频通话] 关闭音频上下文失败:', error);
+            log.warn('关闭音频上下文失败:', error);
           }
         }
       }
@@ -2316,9 +2167,8 @@ class HybridMessaging {
         this.videoConnections.forEach((connection, userId) => {
           try {
             connection.close();
-            console.log(`[视频通话] 强制关闭与用户 ${userId} 的连接`);
           } catch (error) {
-            console.warn(`[视频通话] 关闭与用户 ${userId} 的连接失败:`, error);
+            log.warn(`关闭与用户 ${userId} 的连接失败:`, error);
           }
         });
         this.videoConnections.clear();
@@ -2333,12 +2183,11 @@ class HybridMessaging {
       
       this.initVideoCallState();
       
-      console.log('[视频通话] 强制重置完成');
       
       return { success: true };
       
     } catch (error: any) {
-      console.error('[视频通话] 强制重置状态失败:', error);
+      log.error('强制重置状态失败:', error);
       return { success: false, error: error.message };
     }
   }
@@ -2355,7 +2204,7 @@ class HybridMessaging {
          const endTime: any = new Date(callEndTime);
          duration = Math.floor((endTime - startTime) / 1000);
        } else {
-         console.warn('[语音通话] 缺少通话开始时间，使用当前时间作为开始时间');
+         log.warn('缺少通话开始时间，使用当前时间作为开始时间');
        }
       
       const callInfo = {
@@ -2374,7 +2223,6 @@ class HybridMessaging {
          encrypted: false
        };
       
-      console.log('[语音通话] 保存通话记录:', callRecord);
       
       try {
         const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
@@ -2388,12 +2236,11 @@ class HybridMessaging {
         });
         
         if (response.ok) {
-          console.log('[语音通话] 通话记录保存成功');
         } else {
-          console.error('[语音通话] 保存通话记录失败:', response.statusText);
+          log.error('保存通话记录失败:', response.statusText);
         }
       } catch (fetchError) {
-        console.error('[语音通话] 保存通话记录网络错误:', fetchError);
+        log.error('保存通话记录网络错误:', fetchError);
       }
       
       if (this.onMessageReceived) {
@@ -2411,23 +2258,20 @@ class HybridMessaging {
           method: 'Server'
         };
         
-        console.log('[语音通话] 通知前端添加通话记录:', messageForUI);
         this.onMessageReceived(messageForUI);
       }
       
     } catch (error) {
-      console.error('[语音通话] 保存通话记录异常:', error);
+      log.error('保存通话记录异常:', error);
     }
   }
   
   async handleVoiceCallOffer(data: any) {
     try {
-      console.log(`[语音通话] 收到来自用户 ${data.from_id} 的通话邀请`);
       
       let encryptionKey = null;
       if (data.encryption_key && Array.isArray(data.encryption_key)) {
         encryptionKey = data.encryption_key;
-        console.log('[音频加密] 收到加密密钥，将启用加密通话');
       }
       
       if (this.onVoiceCallReceived) {
@@ -2441,13 +2285,12 @@ class HybridMessaging {
       }
       
     } catch (error) {
-      console.error('[语音通话] 处理通话邀请失败:', error);
+      log.error('处理通话邀请失败:', error);
     }
   }
   
   async handleVoiceCallAnswer(data: any) {
     try {
-      console.log(`[语音通话] 收到来自用户 ${data.from_id} 的通话应答`);
       
       if (this.voiceCallState && this.voiceCallState.peerConnection) {
         await this.voiceCallState.peerConnection.setRemoteDescription(
@@ -2463,13 +2306,12 @@ class HybridMessaging {
       }
       
     } catch (error) {
-      console.error('[语音通话] 处理通话应答失败:', error);
+      log.error('处理通话应答失败:', error);
     }
   }
   
   async handleVoiceCallIceCandidate(data: any) {
     try {
-      console.log(`[语音通话] 收到来自用户 ${data.from_id} 的ICE候选`);
       
       if (this.voiceCallState && this.voiceCallState.peerConnection) {
         await this.voiceCallState.peerConnection.addIceCandidate(
@@ -2478,13 +2320,12 @@ class HybridMessaging {
       }
       
     } catch (error) {
-      console.error('[语音通话] 处理ICE候选失败:', error);
+      log.error('处理ICE候选失败:', error);
     }
   }
   
   async handleVoiceCallRejected(data: any) {
     try {
-      console.log(`[语音通话] 用户 ${data.from_id} 拒绝了通话`);
       
       await this.saveVoiceCallRecord(data.from_id, 'rejected');
       
@@ -2503,16 +2344,14 @@ class HybridMessaging {
         });
       }
       
-      console.log('[语音通话] 通话拒绝处理完成');
       
     } catch (error) {
-      console.error('[语音通话] 处理通话拒绝失败:', error);
+      log.error('处理通话拒绝失败:', error);
     }
   }
   
   async handleVoiceCallEnded(data: any) {
     try {
-      console.log(`[语音通话] 用户 ${data.from_id} 结束了通话`);
       
       if (this.voiceCallState && this.voiceCallState.callStartTime) {
         await this.saveVoiceCallRecord(data.from_id, 'completed');
@@ -2533,21 +2372,18 @@ class HybridMessaging {
         });
       }
       
-      console.log('[语音通话] 远程通话结束处理完成');
       
     } catch (error) {
-      console.error('[语音通话] 处理通话结束失败:', error);
+      log.error('处理通话结束失败:', error);
     }
   }
   
   handleHeartbeatResponse() {
-    console.log('[心跳] 收到服务器心跳响应');
     this.lastHeartbeatTime = Date.now();
     this.connectionHealthy = true;
   }
 
   handleUserStatusUpdate(data: any) {
-    console.log('[用户状态] 收到用户状态更新:', data);
     if (this.onUserStatusChanged) {
       this.onUserStatusChanged({
         userId: data.user_id,
@@ -2559,12 +2395,10 @@ class HybridMessaging {
 
   async handleVideoCallOffer(data: any) {
     try {
-      console.log(`[视频通话] 收到来自用户 ${data.from_id} 的通话邀请`);
       
       let encryptionKey = null;
       if (data.encryption_key && Array.isArray(data.encryption_key)) {
         encryptionKey = data.encryption_key;
-        console.log('[视频加密] 收到加密密钥，将启用加密通话');
       }
       
       if (this.onVideoCallReceived) {
@@ -2578,13 +2412,12 @@ class HybridMessaging {
       }
       
     } catch (error) {
-      console.error('[视频通话] 处理通话邀请失败:', error);
+      log.error('处理通话邀请失败:', error);
     }
   }
   
   async handleVideoCallAnswer(data: any) {
     try {
-      console.log(`[视频通话] 收到来自用户 ${data.from_id} 的通话应答`);
       
       if (this.videoCallState && this.videoCallState.peerConnection) {
         await this.videoCallState.peerConnection.setRemoteDescription(
@@ -2600,13 +2433,12 @@ class HybridMessaging {
       }
       
     } catch (error) {
-      console.error('[视频通话] 处理通话应答失败:', error);
+      log.error('处理通话应答失败:', error);
     }
   }
   
   async handleVideoCallIceCandidate(data: any) {
     try {
-      console.log(`[视频通话] 收到来自用户 ${data.from_id} 的ICE候选`);
       
       if (this.videoCallState && this.videoCallState.peerConnection) {
         await this.videoCallState.peerConnection.addIceCandidate(
@@ -2615,13 +2447,12 @@ class HybridMessaging {
       }
       
     } catch (error) {
-      console.error('[视频通话] 处理ICE候选失败:', error);
+      log.error('处理ICE候选失败:', error);
     }
   }
   
   async handleVideoCallRejected(data: any) {
     try {
-      console.log(`[视频通话] 用户 ${data.from_id} 拒绝了通话`);
       
       await this.saveVideoCallRecord(data.from_id, 'rejected');
       
@@ -2640,16 +2471,14 @@ class HybridMessaging {
         });
       }
       
-      console.log('[视频通话] 通话拒绝处理完成');
       
     } catch (error) {
-      console.error('[视频通话] 处理通话拒绝失败:', error);
+      log.error('处理通话拒绝失败:', error);
     }
   }
   
   async handleVideoCallEnded(data: any) {
     try {
-      console.log(`[视频通话] 用户 ${data.from_id} 结束了通话`);
       
       if (this.videoCallState && this.videoCallState.callStartTime) {
         await this.saveVideoCallRecord(data.from_id, 'completed');
@@ -2670,16 +2499,14 @@ class HybridMessaging {
         });
       }
       
-      console.log('[视频通话] 远程通话结束处理完成');
       
     } catch (error) {
-      console.error('[视频通话] 处理通话结束失败:', error);
+      log.error('处理通话结束失败:', error);
     }
   }
   
   async handleVideoCallToggle(data: any) {
     try {
-      console.log(`[视频通话] 用户 ${data.from_id} 切换了媒体状态:`, data.payload);
       
       if (this.onVideoCallStatusChanged) {
         this.onVideoCallStatusChanged({
@@ -2691,7 +2518,7 @@ class HybridMessaging {
       }
       
     } catch (error) {
-      console.error('[视频通话] 处理媒体切换失败:', error);
+      log.error('处理媒体切换失败:', error);
     }
   }
   
@@ -2707,7 +2534,7 @@ class HybridMessaging {
         const endTime: any = new Date(callEndTime);
         duration = Math.floor((endTime - startTime) / 1000);
       } else {
-        console.warn('[视频通话] 缺少通话开始时间，使用当前时间作为开始时间');
+        log.warn('缺少通话开始时间，使用当前时间作为开始时间');
       }
      
      const callInfo = {
@@ -2726,7 +2553,6 @@ class HybridMessaging {
         encrypted: false
       };
      
-     console.log('[视频通话] 保存通话记录:', callRecord);
      
      try {
        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
@@ -2740,12 +2566,11 @@ class HybridMessaging {
        });
        
        if (response.ok) {
-         console.log('[视频通话] 通话记录保存成功');
        } else {
-         console.error('[视频通话] 保存通话记录失败:', response.statusText);
+         log.error('保存通话记录失败:', response.statusText);
        }
      } catch (fetchError) {
-       console.error('[视频通话] 保存通话记录网络错误:', fetchError);
+       log.error('保存通话记录网络错误:', fetchError);
      }
      
      if (this.onMessageReceived) {
@@ -2763,12 +2588,11 @@ class HybridMessaging {
          method: 'Server'
        };
        
-       console.log('[视频通话] 通知前端添加通话记录:', messageForUI);
        this.onMessageReceived(messageForUI);
      }
      
    } catch (error) {
-     console.error('[视频通话] 保存通话记录异常:', error);
+     log.error('保存通话记录异常:', error);
    }
  }
   
@@ -2781,7 +2605,6 @@ class HybridMessaging {
         videoTracks.forEach((track: any) => {
           track.enabled = !currentEnabled;
         });
-        console.log(`[视频通话] 摄像头${!currentEnabled ? '已开启' : '已关闭'}`);
         
         if (this.videoCallState?.targetUserId && this.ws && this.ws.readyState === WebSocket.OPEN) {
           this.ws.send(JSON.stringify({
@@ -2809,7 +2632,6 @@ class HybridMessaging {
         audioTracks.forEach((track: any) => {
           track.enabled = !currentEnabled;
         });
-        console.log(`[视频通话] 麦克风${!currentEnabled ? '已开启' : '已静音'}`);
         
         if (this.videoCallState?.targetUserId && this.ws && this.ws.readyState === WebSocket.OPEN) {
           this.ws.send(JSON.stringify({

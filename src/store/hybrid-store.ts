@@ -1,6 +1,8 @@
 import { reactive, computed } from 'vue';
 import CryptoJS from 'crypto-js';
 import { getChinaTimeISO, generateTempMessageId } from '../utils/timeUtils.ts';
+import { createLogger } from '../utils/logger.ts';
+const log = createLogger('HybridStore');
 
 // 创建reactive状态
 const state = reactive({
@@ -89,7 +91,7 @@ export const hybridStore = {
     // 验证输入参数 - 后端返回的用户对象使用 userId 字段
     const userId = user?.id || user?.userId;
     if (!user || !userId || !token) {
-      console.error('setUser: 无效的用户信息或token', { user, token });
+      log.error('setUser: 无效的用户信息或token', { user, token });
       return false;
     }
     
@@ -108,22 +110,18 @@ export const hybridStore = {
       localStorage.setItem('user', JSON.stringify(normalizedUser));
       localStorage.setItem('token', token);
       
-      console.log('用户信息设置成功:', { userId: normalizedUser.id, username: normalizedUser.username });
       
       // 登录成功后初始化本地数据库
       try {
-        console.log('📦 正在为用户 %s 初始化本地数据库...', normalizedUser.id);
         const { initDatabase } = await import('../client_db/database.ts');
         await initDatabase(normalizedUser.id);
-        console.log('✅ 本地数据库初始化完成');
       } catch (dbError) {
-        console.error('❌ 本地数据库初始化失败:', dbError);
-        console.log('⚠️ 应用将在没有本地数据库的情况下运行');
+        log.error('本地数据库初始化失败:', dbError);
       }
-      
+
       return true;
     } catch (error) {
-      console.error('设置用户信息失败:', error);
+      log.error('设置用户信息失败:', error);
       return false;
     }
   },
@@ -143,14 +141,13 @@ export const hybridStore = {
         try {
           const { initDatabase } = await import('../client_db/database.ts');
           await initDatabase(parsedUser.id);
-          console.log('✅ 从本地存储恢复会话时已初始化数据库');
         } catch (dbError) {
-          console.error('❌ 从本地存储恢复会话时初始化数据库失败:', dbError);
+          log.error('从本地存储恢复会话时初始化数据库失败:', dbError);
         }
-        
+
         return true;
       } catch (error) {
-        console.error('从本地存储加载用户信息失败:', error);
+        log.error('从本地存储加载用户信息失败:', error);
         this.logout(); // 如果加载失败，清理状态
         return false;
       }
@@ -177,7 +174,7 @@ export const hybridStore = {
   setContacts(contacts) {
     // 确保contacts是数组
     if (!Array.isArray(contacts)) {
-      console.error('setContacts: contacts must be an array, received:', typeof contacts);
+      log.error('setContacts: contacts must be an array, received:', typeof contacts);
       state.contacts = [];
       return;
     }
@@ -286,33 +283,38 @@ export const hybridStore = {
     }
 
     const conversation = state.conversations[userId];
-    
-    // 检查是否已存在相同ID的消息，避免重复添加
+
+    // 去重：先按ID查找，再按(from, to, timestamp)查找
     const existingIndex = conversation.messages.findIndex(m => m.id === message.id);
     if (existingIndex !== -1) {
-      // 更新现有消息 - 使用splice确保触发响应式更新
       conversation.messages.splice(existingIndex, 1, { ...message });
     } else {
-      // 添加新消息 - 创建新数组确保触发响应式更新
-      conversation.messages = [...conversation.messages, { ...message }];
+      // 按发送方+接收方+时间戳去重，防止不同路径生成的不同临时ID导致重复
+      const dedupIndex = conversation.messages.findIndex(m =>
+        String(m.from) === String(message.from)
+        && String(m.to) === String(message.to)
+        && m.timestamp === message.timestamp
+      );
+      if (dedupIndex !== -1) {
+        conversation.messages.splice(dedupIndex, 1, { ...message });
+      } else {
+        conversation.messages = [...conversation.messages, { ...message }];
+      }
     }
-    
+
     // 按时间戳重新排序所有消息，确保正确的时间顺序
     conversation.messages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    
+
     // 更新最后一条消息（按时间戳排序后的最后一条）
     if (conversation.messages.length > 0) {
       conversation.lastMessage = { ...conversation.messages[conversation.messages.length - 1] };
     }
-    
+
     // 更新联系人的最后一条消息
-    const contact = state.contacts.find(c => c.id === userId);
+    const contact = state.contacts.find(c => c.id == userId || c.id === parseInt(userId));
     if (contact) {
       contact.lastMessage = { ...conversation.lastMessage };
     }
-    
-    console.log(`已添加消息到用户${userId}的对话:`, message);
-    console.log(`当前对话消息数量:`, conversation.messages.length);
   },
 
   // 设置对话消息（用于加载历史消息）
@@ -326,7 +328,7 @@ export const hybridStore = {
     
     // 确保messages是数组
     if (!Array.isArray(messages)) {
-      console.error('setMessages: messages must be an array');
+      log.error('setMessages: messages must be an array');
       return;
     }
     
@@ -362,7 +364,7 @@ export const hybridStore = {
             callEndTime: callInfo.endTime || null
           };
         } catch (error) {
-          console.warn('解析语音通话记录失败:', error, message);
+          log.warn('解析语音通话记录失败:', error, message);
           // 如果解析失败，保持原消息不变
           return message;
         }
@@ -374,26 +376,11 @@ export const hybridStore = {
     const sortedMessages = processedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     
     state.conversations[userId].messages = sortedMessages;
-    
-    // 更新最后一条消息
-    if (sortedMessages.length > 0) {
-      state.conversations[userId].lastMessage = sortedMessages[sortedMessages.length - 1];
-      
-      // 更新联系人的最后一条消息
-      const contact = state.contacts.find(c => c.id === userId);
-      if (contact) {
-        contact.lastMessage = sortedMessages[sortedMessages.length - 1];
-      }
-    }
-    
-    // 将消息保存到本地数据库
+
+    // 将新消息持久化到本地 SQLite（刷新后恢复的关键）
     try {
-      // 动态导入数据库模块，避免循环依赖
       const { addMessage } = await import('../client_db/database.ts');
-      
-      // 检查是否有新消息需要保存到数据库
       for (const message of sortedMessages) {
-        // 只保存有ID的消息，避免重复保存临时消息
         if (message.id && !existingMessagesMap.has(message.id)) {
           await addMessage({
             id: message.id,
@@ -404,16 +391,25 @@ export const hybridStore = {
             method: message.method || 'Server',
             encrypted: message.encrypted || false,
             messageType: message.messageType || 'text',
-            destroyAfter: message.destroyAfter || null
+            destroyAfter: message.destroyAfter || null,
           });
         }
       }
-      console.log(`已将用户${userId}的新消息保存到本地数据库`);
     } catch (error) {
-      console.error(`保存消息到本地数据库失败:`, error);
+      log.error('保存消息到本地数据库失败:', error);
     }
-    
-    console.log(`已设置用户${userId}的消息历史，共${sortedMessages.length}条消息`);
+
+    // 更新最后一条消息
+    if (sortedMessages.length > 0) {
+      state.conversations[userId].lastMessage = sortedMessages[sortedMessages.length - 1];
+      
+      // 更新联系人的最后一条消息
+      const contact = state.contacts.find(c => c.id === userId);
+      if (contact) {
+        contact.lastMessage = sortedMessages[sortedMessages.length - 1];
+      }
+    }
+
   },
 
   // 获取对话消息
@@ -443,7 +439,6 @@ export const hybridStore = {
     const contact = state.contacts.find(c => c.id == userId || c.id === parseInt(userId));
     if (contact) {
       contact.avatar = avatarUrl;
-      console.log(`已更新联系人 ${userId} 的头像:`, avatarUrl);
     }
   },
 
@@ -476,7 +471,6 @@ export const hybridStore = {
     state.contacts.forEach(contact => {
       contact.online = onlineIds.has(contact.id);
     });
-    console.log(`[Store] 好友在线状态已更新, ${onlineIds.size} 个好友在线.`);
   },
 
   updateOnlineStatus(statusUpdate) {
@@ -497,7 +491,6 @@ export const hybridStore = {
       if (lastSeen) {
         contact.lastSeen = lastSeen;
       }
-      console.log(`已更新用户 ${userId} 的在线状态: ${isOnline ? '在线' : '离线'}`);
     }
   },
 
@@ -513,7 +506,7 @@ export const hybridStore = {
       const encrypted = CryptoJS.AES.encrypt(message, publicKey).toString();
       return encrypted;
     } catch (error) {
-      console.error('加密失败:', error);
+      log.error('加密失败:', error);
       return message; // 如果加密失败，返回原消息
     }
   },
@@ -525,7 +518,7 @@ export const hybridStore = {
       const decrypted = CryptoJS.AES.decrypt(encryptedMessage, privateKey).toString(CryptoJS.enc.Utf8);
       return decrypted || encryptedMessage; // 如果解密失败，返回原消息
     } catch (error) {
-      console.error('解密失败:', error);
+      log.error('解密失败:', error);
       return encryptedMessage; // 如果解密失败，返回原消息
     }
   },
@@ -605,36 +598,12 @@ export const hybridStore = {
       callEndTime: message.callEndTime || null
     };
     
-    console.log('Store处理接收到的消息:', messageObj);
-    
+
     // 立即添加到对话记录（UI显示）
     this.addMessage(message.from, messageObj);
-    
-    // 异步保存到本地数据库
-    try {
-      // 动态导入本地消息服务
-      const { default: localMessageService } = await import('../services/localMessageService.ts');
-      
-      // 构造数据库消息对象
-      const dbMessage = {
-        from: message.from,
-        to: state.user?.id,
-        content: message.content,
-        timestamp: message.timestamp || getChinaTimeISO(),
-        method: message.method || 'Server',
-        messageType: message.messageType || message.message_type || 'text',
-        filePath: message.filePath || message.file_path || null,
-        fileName: message.fileName || message.file_name || null,
-        imageUrl: message.imageUrl || null,
-        destroyAfter: destroyAfter
-      };
-      
-      await localMessageService.receiveMessage(dbMessage);
-      console.log('接收到的消息已保存到本地数据库');
-    } catch (dbError) {
-      console.warn('保存接收消息到本地数据库失败:', dbError);
-    }
-    
+
+    // DB写入已在上游 handleServerMessage 中完成，此处不再重复写入
+
     // 更新消息统计
     state.messageStats.totalReceived++;
     if (message.method === 'P2P') {
@@ -643,13 +612,12 @@ export const hybridStore = {
       state.messageStats.serverReceived++;
     }
     
-    console.log(`消息已添加到用户${message.from}的对话，当前消息总数:`, this.getMessages(message.from).length);
   },
 
   // 初始化HybridMessaging服务
   async initializeHybridMessaging() {
     if (!state.user || !state.token) {
-      console.error('用户未登录，无法初始化消息服务');
+      log.error('用户未登录，无法初始化消息服务');
       return false;
     }
     
@@ -668,10 +636,9 @@ export const hybridStore = {
       // 启动阅后即焚消息清理定时器
       this.startBurnAfterCleanupTimer();
       
-      console.log('HybridMessaging服务初始化成功，回调函数已设置');
       return true;
     } catch (error) {
-      console.error('初始化HybridMessaging服务失败:', error);
+      log.error('初始化HybridMessaging服务失败:', error);
       return false;
     }
   },
@@ -709,39 +676,35 @@ export const hybridStore = {
     
     // 检查 state.conversations 是否存在
     if (!state.conversations || typeof state.conversations !== 'object') {
-      console.log('state.conversations 不存在或不是对象，跳过清理');
       return 0;
     }
-    
+
     // 遍历所有联系人的对话
     Object.keys(state.conversations).forEach(contactId => {
       const conversation = state.conversations[contactId];
       if (!conversation || !Array.isArray(conversation.messages)) {
         return; // 跳过无效的对话
       }
-      
+
       const messages = conversation.messages;
       const originalLength = messages.length;
-      
+
       // 过滤掉过期的阅后即焚消息
       conversation.messages = messages.filter(message => {
         if (message.destroy_after && message.destroy_after <= currentTime) {
-          console.log(`清理过期的阅后即焚消息: ${message.id}`);
           return false; // 移除过期消息
         }
         return true; // 保留未过期消息
       });
-      
+
       const cleanedCount = originalLength - conversation.messages.length;
       totalCleaned += cleanedCount;
-      
+
       if (cleanedCount > 0) {
-        console.log(`联系人 ${contactId} 清理了 ${cleanedCount} 条过期消息`);
       }
     });
     
     if (totalCleaned > 0) {
-      console.log(`总共清理了 ${totalCleaned} 条过期的阅后即焚消息`);
     }
     
     return totalCleaned;
@@ -758,7 +721,6 @@ export const hybridStore = {
       this.cleanExpiredBurnAfterMessages();
     }, 5000); // 5秒
     
-    console.log('阅后即焚消息清理定时器已启动（每5秒检查一次）');
   },
 
   // 停止清理定时器
@@ -766,7 +728,6 @@ export const hybridStore = {
     if (state.burnAfterCleanupTimer) {
       clearInterval(state.burnAfterCleanupTimer);
       state.burnAfterCleanupTimer = null;
-      console.log('阅后即焚消息清理定时器已停止');
     }
   },
 

@@ -2,6 +2,21 @@ import logger from './logger';
 import { getChinaTimeISO, generateTempMessageId } from './timeUtils.ts';
 
 /**
+ * 加密错误类 — Signal 加密失败时抛出，阻止消息发送
+ */
+export class EncryptionError extends Error {
+  public readonly code: 'SIGNAL_NOT_READY' | 'SIGNAL_ENCRYPT_FAILED' | 'BUNDLE_UNAVAILABLE';
+  public readonly recipientUserId: string;
+
+  constructor(code: EncryptionError['code'], recipientUserId: string, message: string) {
+    super(message);
+    this.name = 'EncryptionError';
+    this.code = code;
+    this.recipientUserId = recipientUserId;
+  }
+}
+
+/**
  * 错误类型枚举
  */
 export const ErrorTypes = {

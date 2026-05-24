@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
-    "test:contract": "node --test test/api-contract.test.ts",
-    "test:signal": "node --test test/signal-runtime.test.ts",
+    "test:contract": "tsx --test test/api-contract.test.ts",
+    "test:signal": "tsx --test test/signal-runtime.test.ts",
     "preview": "vite preview",
     "tauri": "tauri"
   },
@@ -26,6 +26,7 @@
     "@types/crypto-js": "^4.2.2",
     "@types/node": "^24.0.0",
     "@vitejs/plugin-vue": "^5.2.1",
+    "tsx": "^4.22.3",
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
     "vue-tsc": "^2.1.10"

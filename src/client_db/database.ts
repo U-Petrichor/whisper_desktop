@@ -1,6 +1,8 @@
 import Database from '@tauri-apps/plugin-sql';
 import CryptoJS from 'crypto-js';
 import { getChinaTimeISO } from '../utils/timeUtils.ts';
+import { createLogger } from '../utils/logger.ts';
+const log = createLogger('Database');
 
 type SqliteDatabase = Awaited<ReturnType<typeof Database.load>>;
 type SqlValue = string | number | null;
@@ -172,6 +174,16 @@ let db: SqliteDatabase | null = null;
 let currentDatabasePath: string | null = null;
 let currentUserIdForDb: number | null = null;
 
+let dbReadyResolve: (() => void) | null = null;
+let dbReadyPromise: Promise<void> = new Promise((resolve) => { dbReadyResolve = resolve; });
+
+export function waitForDatabase(): Promise<void> {
+  if (db && currentUserIdForDb) {
+    return Promise.resolve();
+  }
+  return dbReadyPromise;
+}
+
 function isTauriEnvironment() {
   if (typeof window === 'undefined') {
     return false;
@@ -239,7 +251,7 @@ function getCurrentUserId() {
     const user = JSON.parse(userStr);
     return Number(user.id || user.userId || 0) || null;
   } catch (error) {
-    console.error('解析用户信息失败:', error);
+    log.error('解析用户信息失败:', error);
     return null;
   }
 }
@@ -252,23 +264,31 @@ function encryptContent(content: string, key: string) {
   try {
     return CryptoJS.AES.encrypt(content, key).toString();
   } catch (error) {
-    console.error('加密失败:', error);
+    log.error('加密失败:', error);
     return content;
   }
 }
 
-function decryptContent(encryptedContent: string, key: string) {
+type DecryptResult = {
+  content: string;
+  decryptionFailed: boolean;
+};
+
+function decryptContent(encryptedContent: string, key: string): DecryptResult {
   if (!key) {
-    return encryptedContent;
+    return { content: encryptedContent, decryptionFailed: false };
   }
 
   try {
     const bytes = CryptoJS.AES.decrypt(encryptedContent, key);
     const decrypted = bytes.toString(CryptoJS.enc.Utf8);
-    return decrypted || encryptedContent;
+    if (decrypted) {
+      return { content: decrypted, decryptionFailed: false };
+    }
+    return { content: encryptedContent, decryptionFailed: true };
   } catch (error) {
-    console.error('解密失败:', error);
-    return encryptedContent;
+    log.error('解密失败:', error);
+    return { content: encryptedContent, decryptionFailed: true };
   }
 }
 
@@ -333,6 +353,9 @@ async function closeDatabase() {
   db = null;
   currentDatabasePath = null;
   currentUserIdForDb = null;
+
+  // 关闭后重置 promise，让后续 waitForDatabase 调用等待重新初始化
+  dbReadyPromise = new Promise((resolve) => { dbReadyResolve = resolve; });
 }
 
 async function initializeSchema() {
@@ -431,10 +454,19 @@ export const initDatabase = async (userId: number) => {
       await generateUserKeyPair(userId);
     }
 
-    console.log(`🎉 SQLite 数据库初始化成功，用户ID: ${userId}`);
+
+    // 通知所有等待数据库初始化的调用方
+    if (dbReadyResolve) {
+      dbReadyResolve();
+    }
+
     return true;
   } catch (error) {
-    console.error('❌ 数据库初始化失败:', getErrorMessage(error), error);
+    log.error('数据库初始化失败:', getErrorMessage(error), error);
+
+    // 初始化失败时重置 promise，以便下次重试
+    dbReadyPromise = new Promise((resolve) => { dbReadyResolve = resolve; });
+
     throw error;
   }
 };
@@ -497,10 +529,9 @@ export const addMessage = async (message: MessageInput) => {
     const conversationUserId = message.from === userId ? message.to : message.from;
     await upsertConversation(conversationUserId, message.content, timestamp);
 
-    console.log('✅ 消息已保存到本地数据库，ID:', result.lastInsertId);
     return result.lastInsertId;
   } catch (error) {
-    console.error('❌ 保存消息失败:', getErrorMessage(error), error);
+    log.error('保存消息失败:', getErrorMessage(error), error);
     throw error;
   }
 };
@@ -553,11 +584,17 @@ export const getMessagesWithFriend = async (friendId: number, options: MessageQu
 
     const allMessages = rows.map((row) => {
       const mapped = mapMessageRow(row);
+      if (mapped.encrypted && decryptionKey) {
+        const result = decryptContent(mapped.content, decryptionKey);
+        return {
+          ...mapped,
+          content: result.content,
+          decryptionFailed: result.decryptionFailed
+        };
+      }
       return {
         ...mapped,
-        content: mapped.encrypted && decryptionKey
-          ? decryptContent(mapped.content, decryptionKey)
-          : mapped.content
+        decryptionFailed: false
       };
     });
 
@@ -579,7 +616,7 @@ export const getMessagesWithFriend = async (friendId: number, options: MessageQu
       hasMore: offset + paginatedMessages.length < total
     };
   } catch (error) {
-    console.error('❌ 获取消息失败:', getErrorMessage(error), error);
+    log.error('获取消息失败:', getErrorMessage(error), error);
     return {
       messages: [],
       total: 0,
@@ -636,10 +673,9 @@ export const clearAllMessages = async () => {
   try {
     await execute('DELETE FROM messages');
     await execute('DELETE FROM conversations');
-    console.log('✅ 所有消息和会话记录已清除');
     return true;
   } catch (error) {
-    console.error('❌ 清除消息失败:', getErrorMessage(error), error);
+    log.error('清除消息失败:', getErrorMessage(error), error);
     return false;
   }
 };
@@ -703,10 +739,9 @@ export const storeUserKeys = async (keyData: Partial<UserKeyRecord>) => {
       ]
     );
 
-    console.log('✅ 用户密钥已保存');
     return true;
   } catch (error) {
-    console.error('❌ 存储用户密钥失败:', getErrorMessage(error), error);
+    log.error('存储用户密钥失败:', getErrorMessage(error), error);
     return false;
   }
 };
@@ -723,7 +758,7 @@ export const getUserKeys = async (userId: number | null = null) => {
 
     return await getUserKeysById(targetUserId);
   } catch (error) {
-    console.error('❌ 获取用户密钥失败:', getErrorMessage(error), error);
+    log.error('获取用户密钥失败:', getErrorMessage(error), error);
     return null;
   }
 };
@@ -739,10 +774,9 @@ export const clearUserKeys = async (userId: number | null = null) => {
     }
 
     await execute('DELETE FROM user_keys WHERE id = $1', [targetUserId]);
-    console.log('✅ 用户密钥已清除');
     return true;
   } catch (error) {
-    console.error('❌ 清除用户密钥失败:', getErrorMessage(error), error);
+    log.error('清除用户密钥失败:', getErrorMessage(error), error);
     return false;
   }
 };
@@ -789,7 +823,7 @@ export const validateUserKeys = async () => {
       }
     };
   } catch (error) {
-    console.error('❌ 验证用户密钥失败:', getErrorMessage(error), error);
+    log.error('验证用户密钥失败:', getErrorMessage(error), error);
     return { valid: false, error: getErrorMessage(error) };
   }
 };
@@ -822,10 +856,9 @@ export const addContact = async (contact: ContactRecord) => {
       ]
     );
 
-    console.log('✅ 联系人已添加，ID:', contact.id);
     return contact.id;
   } catch (error) {
-    console.error('❌ 添加联系人失败:', getErrorMessage(error), error);
+    log.error('添加联系人失败:', getErrorMessage(error), error);
     throw error;
   }
 };
@@ -845,7 +878,7 @@ export const getContacts = async () => {
 
     return rows.map(mapContactRow);
   } catch (error) {
-    console.error('❌ 获取联系人列表失败:', getErrorMessage(error), error);
+    log.error('获取联系人列表失败:', getErrorMessage(error), error);
     return [];
   }
 };
@@ -858,7 +891,7 @@ export const markMessageAsRead = async (messageId: number | string) => {
     await execute('UPDATE messages SET is_read = $1 WHERE id = $2', [1, Number(messageId)]);
     return true;
   } catch (error) {
-    console.error('❌ 标记消息为已读失败:', getErrorMessage(error), error);
+    log.error('标记消息为已读失败:', getErrorMessage(error), error);
     return false;
   }
 };
@@ -869,22 +902,12 @@ export const markMessageAsRead = async (messageId: number | string) => {
 export const deleteMessage = async (messageId: number | string) => {
   try {
     await execute('DELETE FROM messages WHERE id = $1', [Number(messageId)]);
-    console.log('✅ 消息已删除，ID:', messageId);
     return true;
   } catch (error) {
-    console.error('❌ 删除消息失败:', getErrorMessage(error), error);
+    log.error('删除消息失败:', getErrorMessage(error), error);
     return false;
   }
 };
-
-if (typeof window !== 'undefined') {
-  window.checkWhisperDatabaseStatus = checkDatabaseStatus;
-  window.clearWhisperDatabaseMessages = clearAllMessages;
-  window.getWhisperUserKeys = getUserKeys;
-  window.clearWhisperUserKeys = clearUserKeys;
-  window.validateWhisperUserKeys = validateUserKeys;
-  window.getWhisperContacts = getContacts;
-}
 
 export default {
   name: 'WhisperLocalDatabase',

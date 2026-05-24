@@ -39,6 +39,11 @@ pub struct SessionInternalState {
     pub pn: u32,
     #[serde(with = "crate::signal::models::base64_u64_bytes_map")]
     pub skipped_message_keys: HashMap<u64, Vec<u8>>,
+    /// OPK ID used during X3DH session initiation (sender side only).
+    /// Included in the first message header so the receiver knows which OPK was used.
+    /// Cleared to None after the first message is encrypted.
+    #[serde(default)]
+    pub initial_opk_id: Option<u32>,
 }
 
 /// Double Ratchet session state (immutable snapshot).
@@ -76,6 +81,9 @@ pub struct MessageHeader {
     pub dh_pub_key: Vec<u8>,
     pub n: u32,
     pub pn: u32,
+    /// OPK ID used by the sender during X3DH. Only present in the first message of a session.
+    #[serde(default)]
+    pub opk_id: Option<u32>,
 }
 
 // ── Serde helpers ────────────────────────────────────────────────────

@@ -45,6 +45,8 @@ pub struct MessageHeaderWire {
     pub dh_pub_key: String,
     pub n: u32,
     pub pn: u32,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub opk_id: Option<u32>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -122,6 +124,7 @@ fn header_to_wire(header: &MessageHeader) -> MessageHeaderWire {
         dh_pub_key: b64enc(&header.dh_pub_key),
         n: header.n,
         pn: header.pn,
+        opk_id: header.opk_id,
     }
 }
 
@@ -130,6 +133,7 @@ fn wire_to_header(wire: &MessageHeaderWire) -> Result<MessageHeader, String> {
         dh_pub_key: b64dec(&wire.dh_pub_key)?,
         n: wire.n,
         pn: wire.pn,
+        opk_id: wire.opk_id,
     })
 }
 
@@ -213,7 +217,10 @@ pub fn signal_encrypt_message(
     let existing_session = state::load_session(from_user_id, to_user_id)?;
     let session = match existing_session {
         Some(s) => s,
-        None => SignalCryptoEngine::initiate_session_as_sender(&account, &bundle),
+        None => {
+            let (sess, _opk_id) = SignalCryptoEngine::initiate_session_as_sender(&account, &bundle);
+            sess
+        }
     };
 
     let (header, ciphertext, new_session) =

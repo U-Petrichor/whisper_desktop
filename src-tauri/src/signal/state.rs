@@ -3,9 +3,17 @@ use std::path::PathBuf;
 
 use super::models::{LocalAccountState, SessionState};
 
+/// Protocol version tag — incremented when key formats change incompatibly.
+/// Existing state files with a different version are auto-deleted to force re-registration.
+const STATE_VERSION: u32 = 2;
+
 fn signal_dir() -> PathBuf {
     let data_dir = dirs::data_dir().expect("cannot determine app data directory");
     data_dir.join("whisper-desktop").join("signal")
+}
+
+fn version_path() -> PathBuf {
+    signal_dir().join("version")
 }
 
 fn account_path(user_id: u64) -> PathBuf {
@@ -23,6 +31,35 @@ fn ensure_dir() {
     }
 }
 
+/// Check version and nuke all state if incompatible.
+fn check_version_and_migrate() {
+    ensure_dir();
+    let vpath = version_path();
+    let current = if vpath.exists() {
+        let data = fs::read_to_string(&vpath).unwrap_or_default();
+        data.trim().parse::<u32>().unwrap_or(1)
+    } else {
+        1 // no version file means legacy v1 state
+    };
+
+    if current != STATE_VERSION {
+        // Delete everything and start fresh
+        let dir = signal_dir();
+        if dir.exists() {
+            if let Ok(entries) = fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() {
+                        let _ = fs::remove_file(path);
+                    }
+                }
+            }
+        }
+        ensure_dir();
+        fs::write(vpath, STATE_VERSION.to_string()).expect("cannot write version file");
+    }
+}
+
 pub fn save_account(user_id: u64, state: &LocalAccountState) -> Result<(), String> {
     ensure_dir();
     let json = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
@@ -30,6 +67,7 @@ pub fn save_account(user_id: u64, state: &LocalAccountState) -> Result<(), Strin
 }
 
 pub fn load_account(user_id: u64) -> Result<Option<LocalAccountState>, String> {
+    check_version_and_migrate();
     let path = account_path(user_id);
     if !path.exists() {
         return Ok(None);
@@ -46,6 +84,7 @@ pub fn save_session(user_id: u64, peer_id: u64, session: &SessionState) -> Resul
 }
 
 pub fn load_session(user_id: u64, peer_id: u64) -> Result<Option<SessionState>, String> {
+    check_version_and_migrate();
     let path = session_path(user_id, peer_id);
     if !path.exists() {
         return Ok(None);

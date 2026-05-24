@@ -34,6 +34,7 @@ export interface SignalEnvelope {
     dhPubKey: string;
     n: number;
     pn: number;
+    opkId?: number | null;
   };
   ciphertext: string;
 }
@@ -207,7 +208,7 @@ interface TauriKeyBundleRaw {
 
 interface TauriEnvelopeRaw {
   senderIdentityPublicKey: string;
-  header: { dhPubKey: string; n: number; pn: number };
+  header: { dhPubKey: string; n: number; pn: number; opkId?: number | null };
   ciphertext: string;
 }
 
@@ -269,6 +270,7 @@ export class SignalTauriRuntime {
         dhPubKey: raw.header.dhPubKey,
         n: raw.header.n,
         pn: raw.header.pn,
+        opkId: raw.header.opkId ?? null,
       },
       ciphertext: raw.ciphertext,
     };
@@ -284,6 +286,7 @@ export class SignalTauriRuntime {
           dhPubKey: input.envelope.header.dhPubKey,
           n: input.envelope.header.n,
           pn: input.envelope.header.pn,
+          opkId: input.envelope.header.opkId ?? undefined,
         },
         ciphertext: input.envelope.ciphertext,
       },
